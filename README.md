@@ -125,11 +125,11 @@ Güvenlik, seçtiğiniz parolanın (ve/veya anahtar dosyasının) gücüne **ba�
 | `lib.cs` | Şifreleme ve arşiv çekirdeği (her `_decrypt.cmd` içine de gömülür) |
 | `dec.ps1` | Her `_decrypt.cmd` içine gömülen çözücü |
 | `stub.bat` | `_decrypt.cmd` dosyasının batch başlangıç kısmı |
-| `shim.js` | Sağ tık yardımcısı (çoklu seçim → tek pencere) |
+| `shim.js.txt` | Sağ tık yardımcısı, JScript kaynağı (çoklu seçim → tek pencere) |
 
 **Değişiklik adımları:** 1) `src\` içindeki ilgili dosyayı düzenleyin, 2) `powershell -File src\build.ps1` çalıştırın (`SecureEncrypt.cmd` yeniden üretilir ve SHA256 imzası otomatik hesaplanır), 3) kurulu sağ tık kopyasını güncellemek için `SecureEncrypt.cmd` dosyasını çalıştırıp **1 (Güncelle)** seçin. Eski `_decrypt.cmd` dosyaları kendi çözücülerini içinde taşıdığı için güncellenmez; yeniden şifrelemeniz gerekir.
 
-**Kolay derleme (sürükle-bırak):** `src\build.ps1` dosyasını komut yazmadan derlemek için `src\drag-drop_build.ps1.vbs` dosyasının üzerine sürükleyip bırakın. Yardımcı, PowerShell'i yönetici izniyle (UAC onayı istenir), `-ExecutionPolicy Bypass` ile başlatır; böylece çalıştırma ilkesi veya elle yönetici penceresi açma derdi olmaz. Bu yardımcı yalnızca geliştirme içindir; kullanım için gerekmez.
+**Kolay derleme (sürükle-bırak):** `src\build.ps1` dosyasını komut yazmadan derlemek için `src\drag-drop_build.ps1.bat` dosyasının üzerine sürükleyip bırakın (ya da bat dosyasına çift tıklayın, o zaman `src\build.ps1` derlenir). Yardımcı PowerShell'i `-ExecutionPolicy Bypass` ile başlatır, yönetici izni gerekmez. Bu yardımcı yalnızca geliştirme içindir; kullanım için gerekmez.
 
 Eski v5 betikleri `old_v5\` klasöründedir.
 
@@ -271,11 +271,11 @@ Binary payload (`SEv2`):
 | `lib.cs` | Crypto and archive core (also embedded in every `_decrypt.cmd`) |
 | `dec.ps1` | The decryptor embedded in every `_decrypt.cmd` |
 | `stub.bat` | Batch start-up part of a `_decrypt.cmd` |
-| `shim.js` | Right-click helper (multi-selection → one window) |
+| `shim.js.txt` | Right-click helper, JScript source (multi-selection → one window) |
 
 **To make a change:** 1) edit the relevant file in `src\`, 2) run `powershell -File src\build.ps1` (regenerates `SecureEncrypt.cmd` and computes its SHA256 signature automatically), 3) to update the installed right-click copy, run `SecureEncrypt.cmd` and choose **1 (Update)**. Existing `_decrypt.cmd` files carry their own decryptor and are not updated; re-encrypt to get the new behaviour.
 
-**Easy build (drag and drop):** to build without typing a command, drag `src\build.ps1` onto `src\drag-drop_build.ps1.vbs`. The helper starts PowerShell elevated (a UAC prompt appears) with `-ExecutionPolicy Bypass`, so neither the execution policy nor opening an administrator window by hand gets in the way. The helper is for development only; it is not needed to use the program.
+**Easy build (drag and drop):** to build without typing a command, drag `src\build.ps1` onto `src\drag-drop_build.ps1.bat` (or double-click the bat file, which then builds `src\build.ps1`). The helper starts PowerShell with `-ExecutionPolicy Bypass` and needs no administrator rights. The helper is for development only; it is not needed to use the program.
 
 The old v5 scripts are in `old_v5\`.
 

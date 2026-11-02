@@ -6,7 +6,7 @@
 #       lib.cs        crypto and archive core (also embedded in every *_decrypt.cmd)
 #       dec.ps1       the decryptor that is embedded in every *_decrypt.cmd
 #       stub.bat      batch start-up part of every *_decrypt.cmd
-#       shim.js       right-click helper (multi selection -> one window)
+#       shim.js.txt   right-click helper (multi selection -> one window; JScript source, stored as .txt)
 #   Usage:  powershell -File src\build.ps1 [output path]
 param([string]$Out = (Join-Path (Split-Path -Parent $PSScriptRoot) 'SecureEncrypt.cmd'), [switch]$NoPause)
 $ErrorActionPreference = 'Stop'
@@ -49,7 +49,7 @@ try {
     $lib      = (ReadSrc 'lib.cs') -replace '(?m)^\s*//.*\r?\n', '' -replace '(?m)^[ ]+', ''
     $dec      = ReadSrc 'dec.ps1'
     $stub     = ReadSrc 'stub.bat'
-    $shim     = ReadSrc 'shim.js'
+    $shim     = ReadSrc 'shim.js.txt'
 
     Write-Host '[2/4] Assembling'
     function Here($name, $text) { "`$$name = @'`n" + $text.TrimEnd() + "`n'@`n" }
