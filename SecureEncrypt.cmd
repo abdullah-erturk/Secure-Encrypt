@@ -1,6 +1,6 @@
 @echo off
 title SecureEncrypt (AES-256 Encrypt ^& Decrypt^) by Abdullah ERTURK
-set "_V_SIG=87894c94a24108b38575b9ecc4f700cd140a793ef8682486a39ec165db36743a"
+set "_V_SIG=5749f89b6dc9e2bec7fb05ab427d391e85a8f3d9a3f93b0033880311f0705b3c"
 setlocal enabledelayedexpansion
 
 set "TEMP_SELF=%TEMP%\SecureEncrypt_verify_%RANDOM%.tmp"
@@ -102,7 +102,7 @@ $M_EN = @{
     strength4     = 'strong'
     pw_mismatch   = 'Passwords do not match. Try again.'
     pw_weak       = 'This password is weak. Use it anyway?'
-    q_adv         = 'Advanced options (key file, delete originals)?'
+    q_adv         = 'Advanced options (key file, delete originals)'
     t_kf          = 'Key file (path, drag a file here, or ? to browse; ENTER to skip)'
     kf_missing    = 'Key file not found: {0}'
     kf_pick_title = 'Select the key file'
@@ -182,7 +182,7 @@ $M_TR = @{
     strength4     = 'g\u00fc\u00e7l\u00fc'
     pw_mismatch   = 'Parolalar e\u015fle\u015fmiyor. Tekrar deneyin.'
     pw_weak       = 'Bu parola zay\u0131f. Yine de kullan\u0131ls\u0131n m\u0131?'
-    q_adv         = 'Geli\u015fmi\u015f se\u00e7enekler (anahtar dosyas\u0131, orijinalleri silme)?'
+    q_adv         = 'Geli\u015fmi\u015f se\u00e7enekler (anahtar dosyas\u0131, orijinalleri silme)'
     t_kf          = 'Anahtar dosyas\u0131 (yol yaz\u0131n, dosyay\u0131 s\u00fcr\u00fckleyin veya ? yaz\u0131p se\u00e7in; atlamak i\u00e7in ENTER)'
     kf_missing    = 'Anahtar dosyas\u0131 bulunamad\u0131: {0}'
     kf_pick_title = 'Anahtar dosyas\u0131n\u0131 se\u00e7in'
@@ -1963,7 +1963,7 @@ exit /b %SE_RC%
 '@
 
 $ShimSrc = @'
-// SecureEncrypt right-click helper (runs under wscript, so it opens no console window).
+// SecureEncrypt right-click helper.
 // Explorer starts one process per selected item. Instead of guessing how long the others take,
 // the first thing each instance does is ask Explorer which items are selected in the window the
 // clicked item is in. All instances of one selection compute the same key; the first one takes
@@ -1999,16 +1999,15 @@ function norm(p) {
 }
 
 // One visible window with all paths; late = look for stragglers.
-// The paths travel in a small Unicode list file (/list), not on the command line: cmd.exe would expand a
-// %VARIABLE% pattern inside a file name. The outer quotes of the cmd /c line are stripped by cmd.
+// The paths travel in a small Unicode list file (/list), not on the command line: a %VARIABLE% pattern inside
+// a file name would be expanded by the command interpreter.
 function launch(list, late) {
     list.sort();
     var listFile = fso.BuildPath(q, "list_" + new Date().getTime() + "_" + Math.floor(Math.random() * 1000000) + ".txt");
     var lf = fso.CreateTextFile(listFile, true, true);
     lf.Write(list.join("\r\n"));
     lf.Close();
-    var inner = '"' + target + '"' + (late ? " /late" : "") + ' /list "' + listFile + '"';
-    sh.Run('cmd.exe /c "' + inner + '"', 1, false);
+    sh.Run('"' + target + '"' + (late ? " /late" : "") + ' /list "' + listFile + '"', 1, false);
 }
 
 // ---------------------------------------------------------------- selection method
@@ -2070,17 +2069,32 @@ function cleanSelectionLocks() {
     } catch (e8) { }
 }
 
+// milliseconds since the lock file was written (a very large number when it cannot be read)
+function lockAge(path) {
+    try {
+        var r = fso.OpenTextFile(path, 1, false);
+        var stamp = parseInt(r.ReadAll(), 10);
+        r.Close();
+        if (!isNaN(stamp)) { return new Date().getTime() - stamp; }
+    } catch (e10) { }
+    return 1e12;
+}
+
+// The lock file is left behind on purpose: the other instances of the same selection start within a moment and
+// see it (younger than SELLOCK) and quit. Once it is older than SELLOCK the same selection can be used again.
 function runWithSelection(sel) {
     cleanSelectionLocks();
     var lockPath = fso.BuildPath(q, "sel_" + selectionKey(sel) + ".lock");
+    if (fso.FileExists(lockPath)) {
+        if (lockAge(lockPath) < SELLOCK) { return; }
+        try { fso.DeleteFile(lockPath, true); } catch (e11) { return; }
+    }
     try {
         var l = fso.CreateTextFile(lockPath, false);
         l.Write(String(new Date().getTime()));
         l.Close();
     } catch (e9) { return; }          // another instance of this very selection already started the window
     launch(sel, false);
-    WScript.Sleep(SELLOCK);           // keep the lock so the remaining instances of this selection quit
-    try { fso.DeleteFile(lockPath, true); } catch (e10) { }
 }
 
 var selection = getSelection(WScript.Arguments(0));
