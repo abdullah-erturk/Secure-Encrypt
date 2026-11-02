@@ -115,7 +115,7 @@ Güvenlik, seçtiğiniz parolanın (ve/veya anahtar dosyasının) gücüne **ba�
 * Kapsayıcı (`SEC1`): öğe sayısı, toplam boyut, her öğe için yol (UTF-8), değişiklik tarihi, öznitelikler, uzunluk ve veri.
 
 ### Kaynak kodu ve geliştirme
-* **Kullanmak için yalnızca `SecureEncrypt.cmd` yeterlidir.** Tek başına çalışır; `src\` ve `old_v5\` klasörlerine ihtiyaç yoktur. Başka bir bilgisayara veya GitHub'a yalnızca bu dosyayı taşımanız yeterli.
+* **Kullanmak için yalnızca `SecureEncrypt.cmd` yeterlidir.** Tek başına çalışır; `src\` ve `old_v5\` klasörlerine ihtiyaç yoktur. Başka bir bilgisayara yalnızca bu dosyayı taşımanız yeterli.
 * **Kodda değişiklik yapmak için `src\` klasöründeki parçaları düzenleyin.** `SecureEncrypt.cmd` bu parçalardan **üretilen** bir dosyadır; doğrudan düzenlemek zordur (Türkçe karakterler `\u011f` gibi kodlanır, C# yorumları ve girintiler atılır) ve bir sonraki derlemede değişiklikleriniz kaybolur.
 
 | Parça | Görevi |
@@ -261,7 +261,7 @@ Binary payload (`SEv2`):
 * Container (`SEC1`): entry count, total size, then per entry: path (UTF-8), modified time, attributes, length and data.
 
 ### Source code and development
-* **`SecureEncrypt.cmd` alone is enough to use the program.** It is self-contained; the `src\` and `old_v5\` folders are not needed. Copy only this file to another computer or to GitHub releases.
+* **`SecureEncrypt.cmd` alone is enough to use the program.** It is self-contained; the `src\` and `old_v5\` folders are not needed. Copy only this file to another computer.
 * **To change the code, edit the parts in `src\`.** `SecureEncrypt.cmd` is a **generated** file; editing it directly is awkward (Turkish characters are stored as `\u011f` escapes, C# comments and indentation are stripped) and your changes are lost on the next build.
 
 | Part | Purpose |
