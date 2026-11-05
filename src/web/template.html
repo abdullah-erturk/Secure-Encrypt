@@ -1,0 +1,994 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="color-scheme" content="dark light">
+<title>SecureEncrypt Web</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%233b6cf6'/%3E%3Crect x='17' y='28' width='30' height='23' rx='4' fill='white'/%3E%3Cpath d='M23 28v-6a9 9 0 0 1 18 0v6' fill='none' stroke='white' stroke-width='5'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg1:#0f1424; --bg2:#1b2340; --card:rgba(255,255,255,.07); --card-b:rgba(255,255,255,.14);
+  --text:#eef1fa; --muted:#a9b2cc; --accent:#4f7bff; --accent2:#6aa0ff; --ok:#4cd08a; --warn:#f2b84b; --bad:#ff6b6b;
+  --field:rgba(255,255,255,.08); --field-b:rgba(255,255,255,.2);
+}
+:root[data-theme="light"]{
+  --bg1:#eef2fb; --bg2:#dbe4f8; --card:rgba(255,255,255,.75); --card-b:rgba(0,0,0,.1);
+  --text:#16203a; --muted:#56617f; --accent:#3563e9; --accent2:#2a52c9; --ok:#17915a; --warn:#a96b00; --bad:#c62d2d;
+  --field:rgba(255,255,255,.9); --field-b:rgba(0,0,0,.22);
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg1:#eef2fb; --bg2:#dbe4f8; --card:rgba(255,255,255,.75); --card-b:rgba(0,0,0,.1);
+    --text:#16203a; --muted:#56617f; --accent:#3563e9; --accent2:#2a52c9; --ok:#17915a; --warn:#a96b00; --bad:#c62d2d;
+    --field:rgba(255,255,255,.9); --field-b:rgba(0,0,0,.22);
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  min-height:100vh; color:var(--text); background:var(--bg1);
+  background-image:radial-gradient(900px 500px at 15% -10%, rgba(79,123,255,.35), transparent 60%),
+                   radial-gradient(800px 500px at 100% 0%, rgba(160,90,255,.25), transparent 60%),
+                   linear-gradient(160deg,var(--bg1),var(--bg2));
+  background-attachment:fixed;
+  font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+.wrap{max-width:760px;margin:0 auto;padding:20px 16px 40px}
+header{display:flex;align-items:center;gap:12px;margin:8px 0 18px}
+.logo{width:44px;height:44px;flex:none}
+h1{font-size:1.35rem;margin:0;line-height:1.2}
+.sub{color:var(--muted);font-size:.9rem}
+.grow{flex:1}
+select,input[type=password],input[type=text]{
+  font:inherit;color:var(--text);background:var(--field);border:1px solid var(--field-b);border-radius:10px;padding:9px 12px;
+}
+select{padding:7px 10px}
+select option{color:#000}
+.card{background:var(--card);border:1px solid var(--card-b);border-radius:18px;padding:18px;
+  -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);box-shadow:0 10px 40px rgba(0,0,0,.25)}
+.tabs{display:flex;gap:6px;margin-bottom:16px;background:var(--field);border-radius:12px;padding:4px}
+.tab{flex:1;border:0;background:transparent;color:var(--muted);font:inherit;font-weight:600;padding:10px;border-radius:9px;cursor:pointer}
+.tab[aria-selected=true]{background:var(--accent);color:#fff}
+.privacy{display:flex;gap:10px;align-items:flex-start;font-size:.88rem;color:var(--muted);margin:0 0 16px}
+.privacy b{color:var(--ok)}
+.drop{border:2px dashed var(--field-b);border-radius:14px;padding:22px 14px;text-align:center;color:var(--muted);transition:.15s}
+.drop.over{border-color:var(--accent2);background:rgba(79,123,255,.12);color:var(--text)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+button.btn{font:inherit;font-weight:600;color:var(--text);background:var(--field);border:1px solid var(--field-b);border-radius:10px;padding:9px 14px;cursor:pointer}
+button.btn:hover{border-color:var(--accent2)}
+button.primary{background:var(--accent);border-color:transparent;color:#fff}
+button.primary:hover{background:var(--accent2)}
+button:disabled{opacity:.5;cursor:default}
+select:disabled{opacity:.5;cursor:default}
+.hint a,.msg a{color:inherit;font-weight:700;text-decoration:underline}
+body.working a.homebtn{pointer-events:none;opacity:.5}
+body.working .drop{opacity:.5}
+.list{list-style:none;margin:10px 0 0;padding:0;max-height:220px;overflow:auto;border-radius:10px}
+.list li{display:flex;align-items:center;gap:10px;padding:7px 10px;background:var(--field);border-radius:8px;margin-bottom:5px;font-size:.92rem}
+.list .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list .sz{color:var(--muted);font-size:.82rem;white-space:nowrap}
+.list .x{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:1.1rem;padding:0 4px}
+label.f{display:block;font-weight:600;margin:14px 0 6px}
+.field{width:100%}
+.hint{color:var(--muted);font-size:.85rem;margin:6px 0 0}
+.meter{display:flex;gap:4px;margin-top:8px;align-items:center}
+.meter i{flex:1;height:5px;border-radius:3px;background:var(--field-b)}
+.meter span{font-size:.82rem;color:var(--muted);min-width:5.5em;text-align:right}
+.msg{margin:14px 0 0;padding:11px 13px;border-radius:10px;font-size:.92rem;white-space:pre-line}
+.msg.ok{background:rgba(76,208,138,.14);border:1px solid rgba(76,208,138,.5)}
+.msg.warn{background:rgba(242,184,75,.14);border:1px solid rgba(242,184,75,.5)}
+.msg.bad{background:rgba(255,107,107,.14);border:1px solid rgba(255,107,107,.5)}
+.msg.info{background:var(--field);border:1px solid var(--field-b)}
+.hidden{display:none!important}
+.bar{height:7px;border-radius:4px;background:var(--field-b);overflow:hidden;margin-top:12px}
+.bar i{display:block;height:100%;width:40%;background:linear-gradient(90deg,var(--accent),var(--accent2));animation:slide 1.1s infinite ease-in-out}
+@keyframes slide{0%{margin-left:-40%}100%{margin-left:100%}}
+a{color:var(--accent2)}
+.results a.btn{display:inline-block;text-decoration:none}
+footer{margin-top:20px;text-align:center;color:var(--muted);font-size:.85rem}
+footer p{margin:6px 0}
+.kf{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.kf .nm{color:var(--muted);font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+@media (max-width:520px){ .wrap{padding:14px 12px 30px} .card{padding:14px} }
+.two{display:grid;grid-template-columns:1fr;gap:0 12px}
+a.homebtn{display:inline-flex;align-items:center;gap:6px;font:inherit;font-weight:600;color:var(--text);background:var(--field);border:1px solid var(--field-b);border-radius:10px;padding:9px 14px;text-decoration:none;white-space:nowrap}
+a.homebtn:hover{border-color:var(--accent2)}
+@media (max-width:520px){ #t_home{display:none} a.homebtn{padding:8px 10px} .logo{width:36px;height:36px} h1{font-size:1.08rem} header{gap:8px} #lang{padding:6px 6px} .sub{font-size:.8rem} }
+header{flex-wrap:wrap}
+header .tabs{flex:1 1 100%;order:5;margin:8px 0 0}
+/* wide screens: two columns (files on the left, options on the right) so that nothing has to be scrolled */
+@media (min-width:860px){
+  .wrap{max-width:1020px;padding-top:12px}
+  header{margin:2px 0 10px;flex-wrap:nowrap}
+  header .tabs{flex:0 0 380px;order:0;margin:0}
+  .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:6px 26px;align-items:start}
+  .two{grid-template-columns:1fr 1fr}
+  .tabs{margin-bottom:10px}
+  .privacy{margin:0 0 10px;font-size:.84rem}
+  .drop{padding:20px 14px}
+  .list{max-height:calc(100vh - 400px);min-height:110px}
+  label.f{margin:0 0 5px}
+  .row{margin:10px 0}
+  .hint{margin:6px 0 10px}
+  footer{display:flex;gap:6px 28px;justify-content:center;align-items:flex-start;flex-wrap:wrap;margin-top:12px;font-size:.8rem}
+  footer p{margin:0}
+}
+@media (min-width:860px) and (max-height:760px){
+  .sub{display:none}
+  .logo{width:36px;height:36px}
+  h1{font-size:1.15rem}
+  .card{padding:14px 16px}
+  .tab{padding:7px}
+  .drop{padding:14px 12px}
+  .field{padding:7px 10px}
+  .hint{font-size:.78rem;margin:4px 0 8px}
+  .list{max-height:calc(100vh - 360px)}
+  .msg{margin:10px 0 0;padding:8px 11px;font-size:.85rem}
+  #t_kf_hint,#t_foot{display:none}
+  .results a.btn{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+  .wrap{padding-bottom:10px}
+  footer{margin-top:8px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#3b6cf6"/><rect x="17" y="28" width="30" height="23" rx="4" fill="#fff"/><path d="M23 28v-6a9 9 0 0 1 18 0v6" fill="none" stroke="#fff" stroke-width="5"/></svg>
+    <div class="grow"><h1>SecureEncrypt Web</h1><div class="sub" id="t_sub"></div></div>
+    <a class="homebtn" id="homeBtn" href="https://erturk-dev.netlify.app"><span aria-hidden="true">&#127968;</span><span id="t_home"></span></a>
+    <div class="tabs" role="tablist">
+      <button class="tab" id="tabEnc" role="tab" aria-selected="true"></button>
+      <button class="tab" id="tabDec" role="tab" aria-selected="false"></button>
+    </div>
+    <select id="lang" aria-label="Language"><option value="en">English</option><option value="tr">T&uuml;rk&ccedil;e</option></select>
+  </header>
+
+  <div class="msg bad hidden" id="t_insecure" style="margin:0 0 12px"></div>
+  <div class="card">
+    <p class="privacy"><span aria-hidden="true">&#128274;</span><span id="t_priv"></span></p>
+
+    <!-- ENCRYPT -->
+    <section id="paneEnc"><div class="cols"><div class="col">
+      <div class="drop" id="dropEnc"><span id="t_drop_enc"></span></div>
+      <div class="row">
+        <button class="btn" id="btnAddFiles"></button>
+        <button class="btn" id="btnAddDir"></button>
+      </div>
+      <p class="hint" id="t_dir_hint"></p>
+      <p class="hint" id="t_limit_enc"></p>
+      <input type="file" id="inFiles" multiple class="hidden">
+      <input type="file" id="inDir" webkitdirectory class="hidden">
+      <ul class="list" id="listEnc"></ul>
+      </div><div class="col">
+      <div class="two">
+        <div>
+          <label class="f" for="pw1" id="t_pw"></label>
+          <input class="field" type="password" id="pw1" autocomplete="new-password">
+          <div class="meter" id="meter"><i></i><i></i><i></i><i></i><span id="meterTxt"></span></div>
+        </div>
+        <div>
+          <label class="f" for="pw2" id="t_pw2"></label>
+          <input class="field" type="password" id="pw2" autocomplete="new-password">
+        </div>
+      </div>
+      <p class="hint" id="t_pw_hint"></p>
+
+      <label class="f" id="t_kf"></label>
+      <div class="kf"><button class="btn" id="btnKfEnc"></button><span class="nm" id="kfEncName"></span><button class="btn hidden" id="btnKfEncClear">&times;</button></div>
+      <input type="file" id="inKfEnc" class="hidden">
+      <p class="hint" id="t_kf_hint"></p>
+
+      <div class="row"><button class="btn primary" id="btnEncrypt"></button><button class="btn" id="btnClear"></button></div>
+      <div class="bar hidden" id="barEnc"><i></i></div>
+      <div id="msgEnc"></div>
+      <div class="results" id="resEnc"></div>
+    </div></div></section>
+
+    <!-- DECRYPT -->
+    <section id="paneDec" class="hidden"><div class="cols"><div class="col">
+      <div class="drop" id="dropDec"><span id="t_drop_dec"></span></div>
+      <div class="row"><button class="btn" id="btnPickDec"></button><span class="nm hint" id="decName"></span></div>
+      <input type="file" id="inDec" class="hidden">
+      <p class="hint" id="t_limit_dec"></p>
+      <div id="decInfo"></div>
+      </div><div class="col">
+
+      <div id="decPwBox" class="hidden">
+        <label class="f" for="pwD" id="t_pwD"></label>
+        <input class="field" type="password" id="pwD" autocomplete="off">
+      </div>
+      <div id="decKfBox" class="hidden">
+        <label class="f" id="t_kfD"></label>
+        <div class="kf"><button class="btn" id="btnKfDec"></button><span class="nm" id="kfDecName"></span></div>
+        <input type="file" id="inKfDec" class="hidden">
+      </div>
+
+      <div class="row"><button class="btn primary" id="btnDecrypt" disabled></button><button class="btn" id="btnClearDec"></button></div>
+      <div class="bar hidden" id="barDec"><i></i></div>
+      <div id="msgDec"></div>
+      <div class="results" id="resDec"></div>
+    </div></div></section>
+  </div>
+
+  <footer>
+    <p id="t_about"></p>
+    <p><a href="https://github.com/abdullah-erturk" target="_blank" rel="noopener noreferrer">github.com/abdullah-erturk</a> &middot;
+       <a href="https://erturk-dev.netlify.app" target="_blank" rel="noopener noreferrer">erturk-dev.netlify.app</a></p>
+    <p id="t_foot"></p>
+  </footer>
+</div>
+
+<script>
+/*CORE-BEGIN*/
+var SEcore = (function () {
+  'use strict';
+  var te = new TextEncoder();
+  var td = new TextDecoder('utf-8');
+  var MAGIC = [0x53, 0x45, 0x76, 0x32];                 // "SEv2"
+  var XORKEY = te.encode('default_xor_key_for_text_obfuscation_secure_encrypt');
+  var MAXIT = 10000000;
+  var subtle = crypto.subtle;
+
+  function SEError(code, detail) { var e = new Error(code + (detail ? ': ' + detail : '')); e.code = code; return e; }
+
+  function cat(parts) {
+    var n = 0, i, k = 0;
+    for (i = 0; i < parts.length; i++) n += parts[i].length;
+    var o = new Uint8Array(n);
+    for (i = 0; i < parts.length; i++) { o.set(parts[i], k); k += parts[i].length; }
+    return o;
+  }
+  function eq(a, b) {
+    if (a.length !== b.length) return false;
+    var d = 0;
+    for (var i = 0; i < a.length; i++) d |= a[i] ^ b[i];
+    return d === 0;
+  }
+  function sha256(b) { return subtle.digest('SHA-256', b).then(function (r) { return new Uint8Array(r); }); }
+  function hmac(key, data) {
+    return subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+      .then(function (k) { return subtle.sign('HMAC', k, data); })
+      .then(function (r) { return new Uint8Array(r); });
+  }
+  function pipe(u8, stream) {
+    return new Response(new Blob([u8]).stream().pipeThrough(stream)).arrayBuffer().then(function (b) { return new Uint8Array(b); });
+  }
+  function gzip(u8) { return pipe(u8, new CompressionStream('gzip')); }
+  function gunzip(u8) {
+    return pipe(u8, new DecompressionStream('gzip')).catch(function () { throw SEError('FORMAT', 'gzip'); });
+  }
+  function xor(u8) {
+    var o = new Uint8Array(u8.length), n = XORKEY.length, j = 0;
+    for (var i = 0; i < u8.length; i++) { o[i] = u8[i] ^ XORKEY[j]; if (++j === n) j = 0; }
+    return o;
+  }
+
+  // password (UTF-8) + SHA-256 of the key file; null when neither is given
+  function makeSecret(password, keyfile) {
+    var pw = te.encode(password || '');
+    if (pw.length === 0 && !keyfile) return Promise.resolve(null);
+    if (!keyfile) return Promise.resolve(pw);
+    return sha256(keyfile).then(function (h) { return cat([pw, h]); });
+  }
+
+  function deriveKeys(secret, salt, iter) {
+    return subtle.importKey('raw', secret, 'PBKDF2', false, ['deriveBits']).then(function (base) {
+      return subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: salt, iterations: iter }, base, 256);
+    }).then(function (m) {
+      var master = new Uint8Array(m);
+      return Promise.all([hmac(master, te.encode('SE2-ENC')), hmac(master, te.encode('SE2-MAC'))]).then(function (r) {
+        return hmac(r[1], te.encode('SE2-KEYCHECK')).then(function (kc) {
+          return { encKey: r[0], macKey: r[1], kc: kc.slice(0, 16) };
+        });
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------- container
+  function varLen(n) { var c = 1; while (n >= 128) { n = Math.floor(n / 128); c++; } return c; }
+  function putVar(o, p, n) { while (n >= 128) { o[p++] = (n % 128) | 128; n = Math.floor(n / 128); } o[p++] = n; return p; }
+  function fileTime(ms) { return (BigInt(Math.round(ms)) + 11644473600000n) * 10000n; }
+
+  // entries: [{ rel, isDir, mtime (ms), data (Uint8Array, files only) }]
+  function buildContainer(entries) {
+    var names = [], size = 16, total = 0, i, e;
+    for (i = 0; i < entries.length; i++) {
+      e = entries[i];
+      var nb = te.encode(e.rel);
+      names.push(nb);
+      size += 1 + varLen(nb.length) + nb.length + 8 + 4;
+      if (!e.isDir) { size += 8 + e.data.length; total += e.data.length; }
+    }
+    var out = new Uint8Array(size), dv = new DataView(out.buffer), p = 0;
+    out.set([0x53, 0x45, 0x43, 0x31], 0); p = 4;                     // "SEC1"
+    dv.setInt32(p, entries.length, true); p += 4;
+    dv.setBigInt64(p, BigInt(total), true); p += 8;
+    for (i = 0; i < entries.length; i++) {
+      e = entries[i];
+      out[p++] = e.isDir ? 1 : 0;
+      p = putVar(out, p, names[i].length);
+      out.set(names[i], p); p += names[i].length;
+      dv.setBigInt64(p, fileTime(e.mtime || Date.now()), true); p += 8;
+      dv.setInt32(p, e.isDir ? 0 : 0x20, true); p += 4;
+      if (!e.isDir) {
+        dv.setBigInt64(p, BigInt(e.data.length), true); p += 8;
+        out.set(e.data, p); p += e.data.length;
+      }
+    }
+    return out;
+  }
+
+  function safeRel(rel) {
+    var r = rel.replace(/\//g, '\\');
+    if (r.length === 0 || r.indexOf(':') >= 0 || r.charAt(0) === '\\') throw SEError('PATH');
+    var parts = r.split('\\');
+    for (var i = 0; i < parts.length; i++) if (parts[i] === '' || parts[i] === '.' || parts[i] === '..') throw SEError('PATH');
+    return parts.join('/');
+  }
+
+  function parseContainer(c) {
+    if (c.length < 16 || c[0] !== 0x53 || c[1] !== 0x45 || c[2] !== 0x43 || c[3] !== 0x31) throw SEError('FORMAT', 'container');
+    var dv = new DataView(c.buffer, c.byteOffset, c.byteLength), p = 4;
+    var n = dv.getInt32(p, true); p += 4;
+    p += 8;
+    if (n < 0) throw SEError('FORMAT');
+    var list = [];
+    for (var i = 0; i < n; i++) {
+      if (p + 1 > c.length) throw SEError('FORMAT');
+      var type = c[p++], len = 0, mul = 1, b;
+      do {
+        if (p >= c.length || mul > 268435456) throw SEError('FORMAT');
+        b = c[p++]; len += (b & 127) * mul; mul *= 128;
+      } while (b & 128);
+      if (p + len + 12 > c.length) throw SEError('FORMAT');
+      var rel = safeRel(td.decode(c.subarray(p, p + len))); p += len;
+      var ft = dv.getBigInt64(p, true); p += 8;
+      p += 4;
+      var ms = Number(ft / 10000n - 11644473600000n);
+      if (type === 1) { list.push({ rel: rel, isDir: true, mtime: ms, size: 0, data: null }); continue; }
+      if (p + 8 > c.length) throw SEError('FORMAT');
+      var fl = Number(dv.getBigInt64(p, true)); p += 8;
+      if (fl < 0 || p + fl > c.length) throw SEError('FORMAT');
+      list.push({ rel: rel, isDir: false, mtime: ms, size: fl, data: c.subarray(p, p + fl) });
+      p += fl;
+    }
+    return list;
+  }
+
+  // ---------------------------------------------------------------- encode / decode
+  // o: { entries, password, keyfile (Uint8Array|null), gzip (bool), head (Uint8Array), iterations }
+  function encode(o) {
+    var container = buildContainer(o.entries);
+    var useGz = !!o.gzip;
+    var flags = (useGz ? 1 : 0) | (o.password ? 2 : 0) | (o.keyfile ? 4 : 0);
+    var iter = o.iterations || 600000;
+    var head = o.head || new Uint8Array(0);
+    var sha, secret, body;
+    return sha256(container).then(function (s) {
+      sha = s;
+      return makeSecret(o.password, o.keyfile);
+    }).then(function (sec) {
+      secret = sec;
+      return useGz ? gzip(container) : container;
+    }).then(function (b) {
+      body = b;
+      if (!secret) {                                                    // mode 1: obfuscation only
+        return { data: cat([head, new Uint8Array(MAGIC), new Uint8Array([1, flags]), sha, xor(body)]), sha: sha, mode: 1 };
+      }
+      var salt = crypto.getRandomValues(new Uint8Array(16));
+      var iv = crypto.getRandomValues(new Uint8Array(16));
+      return deriveKeys(secret, salt, iter).then(function (k) {
+        var header = new Uint8Array(58);
+        header.set(MAGIC, 0); header[4] = 2; header[5] = flags;
+        new DataView(header.buffer).setUint32(6, iter, true);
+        header.set(salt, 10); header.set(iv, 26); header.set(k.kc, 42);
+        return subtle.importKey('raw', k.encKey, 'AES-CBC', false, ['encrypt']).then(function (ak) {
+          return subtle.encrypt({ name: 'AES-CBC', iv: iv }, ak, cat([sha, body]));
+        }).then(function (ct) {
+          var macData = cat([header, new Uint8Array(ct)]);
+          return hmac(k.macKey, macData).then(function (tag) {
+            return { data: cat([head, macData, tag]), sha: sha, mode: 2 };
+          });
+        });
+      });
+    });
+  }
+
+  // offset of the data in a *_decrypt.cmd (right after the "#PS_END" line), 0 for a bare SEv2 blob
+  function findStart(u8) {
+    if (u8.length >= 4 && u8[0] === MAGIC[0] && u8[1] === MAGIC[1] && u8[2] === MAGIC[2] && u8[3] === MAGIC[3]) return 0;
+    var m = te.encode('#PS_END\r\n'), lim = Math.min(u8.length, 262144) - m.length;
+    for (var i = 0; i <= lim; i++) {
+      if (u8[i] !== 0x23) continue;
+      var j = 1;
+      while (j < m.length && u8[i + j] === m[j]) j++;
+      if (j === m.length) return i + m.length;
+    }
+    throw SEError('FORMAT', 'no data');
+  }
+
+  function inspect(u8) {
+    var s = findStart(u8);
+    if (u8.length < s + 6 || u8[s] !== MAGIC[0] || u8[s + 1] !== MAGIC[1] || u8[s + 2] !== MAGIC[2] || u8[s + 3] !== MAGIC[3]) throw SEError('FORMAT');
+    var mode = u8[s + 4], flags = u8[s + 5], m = { start: s, mode: mode, flags: flags, gzip: !!(flags & 1), usesPw: !!(flags & 2), usesKf: !!(flags & 4) };
+    if (mode === 1) {
+      if (u8.length < s + 38) throw SEError('FORMAT');
+      m.payloadStart = s + 38; m.payloadEnd = u8.length;
+    } else if (mode === 2) {
+      if (u8.length < s + 58 + 32) throw SEError('FORMAT');
+      m.iterations = new DataView(u8.buffer, u8.byteOffset + s + 6, 4).getUint32(0, true);
+      if (m.iterations < 1000 || m.iterations > MAXIT) throw SEError('FORMAT', 'iterations');
+      m.payloadStart = s + 58; m.payloadEnd = u8.length - 32;
+    } else throw SEError('FORMAT');
+    return m;
+  }
+
+  // -> { meta, entries, shaOk }
+  function decode(u8, password, keyfile) {
+    var m = inspect(u8), s = m.start;
+    var done = function (plain, expected) {
+      return (m.gzip ? gunzip(plain) : Promise.resolve(plain)).then(function (container) {
+        return sha256(container).then(function (h) {
+          return { meta: m, entries: parseContainer(container), shaOk: eq(h, expected) };
+        });
+      });
+    };
+    if (m.mode === 1) {
+      return done(xor(u8.subarray(m.payloadStart, m.payloadEnd)), u8.slice(s + 6, s + 38));
+    }
+    return makeSecret(password, keyfile).then(function (secret) {
+      if (!secret) throw SEError('NEEDPW');
+      var salt = u8.slice(s + 10, s + 26), iv = u8.slice(s + 26, s + 42), kc = u8.slice(s + 42, s + 58);
+      return deriveKeys(secret, salt, m.iterations).then(function (k) {
+        if (!eq(k.kc, kc)) throw SEError('WRONGPW');
+        return hmac(k.macKey, u8.subarray(s, m.payloadEnd)).then(function (tag) {
+          if (!eq(tag, u8.subarray(m.payloadEnd))) throw SEError('MAC');
+          return subtle.importKey('raw', k.encKey, 'AES-CBC', false, ['decrypt']);
+        }).then(function (ak) {
+          return subtle.decrypt({ name: 'AES-CBC', iv: iv }, ak, u8.subarray(m.payloadStart, m.payloadEnd)).catch(function () { throw SEError('FORMAT', 'padding'); });
+        }).then(function (pt) {
+          pt = new Uint8Array(pt);
+          if (pt.length < 32) throw SEError('FORMAT');
+          return done(pt.subarray(32), pt.slice(0, 32));
+        });
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------- ZIP (store) for "download all"
+  var crcT = null;
+  function crc32(u8) {
+    if (!crcT) { crcT = new Uint32Array(256); for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); crcT[n] = c >>> 0; } }
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < u8.length; i++) crc = crcT[(crc ^ u8[i]) & 255] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+  function zip(entries) {
+    var chunks = [], central = [], off = 0, i;
+    for (i = 0; i < entries.length; i++) {
+      var e = entries[i], nm = te.encode(e.isDir ? e.rel + '/' : e.rel), data = e.isDir ? new Uint8Array(0) : e.data;
+      var d = new Date(e.mtime > 0 ? e.mtime : Date.now()); if (d.getFullYear() < 1980) d = new Date(315532800000);
+      var dt = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+      var dd = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+      var crc = crc32(data);
+      var lh = new Uint8Array(30), v = new DataView(lh.buffer);
+      v.setUint32(0, 0x04034b50, true); v.setUint16(4, 20, true); v.setUint16(6, 0x0800, true); v.setUint16(8, 0, true);
+      v.setUint16(10, dt, true); v.setUint16(12, dd, true); v.setUint32(14, crc, true); v.setUint32(18, data.length, true); v.setUint32(22, data.length, true);
+      v.setUint16(26, nm.length, true); v.setUint16(28, 0, true);
+      chunks.push(lh, nm, data);
+      var ch = new Uint8Array(46), c = new DataView(ch.buffer);
+      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true);
+      c.setUint16(12, dt, true); c.setUint16(14, dd, true); c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true);
+      c.setUint16(28, nm.length, true); c.setUint32(38, e.isDir ? 0x10 : 0, true); c.setUint32(42, off, true);
+      central.push(ch, nm);
+      off += 30 + nm.length + data.length;
+    }
+    var csize = 0;
+    for (i = 0; i < central.length; i++) csize += central[i].length;
+    var end = new Uint8Array(22), ev = new DataView(end.buffer);
+    ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, entries.length, true); ev.setUint16(10, entries.length, true);
+    ev.setUint32(12, csize, true); ev.setUint32(16, off, true);
+    return chunks.concat(central, [end]);
+  }
+
+  return { encode: encode, decode: decode, inspect: inspect, zip: zip, sha256: sha256, cat: cat, SEError: SEError, MAXIT: MAXIT };
+})();
+if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
+/*CORE-END*/
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var HEAD_B64 = "@@HEAD@@";
+
+  var TXT = {
+    en: {
+      sub: 'AES-256 encrypt & decrypt in your browser',
+      priv: '<b>Nothing leaves your device.</b> Files and passwords are processed locally in this page; no data is uploaded anywhere.',
+      tab_enc: 'Encrypt', tab_dec: 'Decrypt',
+      drop_enc: 'Drop files or folders here', add_files: 'Add files...', add_dir: 'Add folder...', clear: 'Clear',
+      pw: 'Password (optional)', pw2: 'Repeat password',
+      pw_hint: 'Without a password the content is only obfuscated (compressed + XOR), which is NOT security and only hides plain text.',
+      kf: 'Key file (optional)', kf_pick: 'Choose key file...', kf_hint: 'A key file can be used instead of a password or together with it (two factors). Its content, not its name, is what counts.',
+      btn_enc: 'Encrypt', btn_dec: 'Decrypt',
+      strength: ['Very weak', 'Weak', 'Fair', 'Good', 'Strong'],
+      drop_dec: 'Drop a *_decrypt.cmd file here', pick_dec: 'Choose *_decrypt.cmd...',
+      pw_dec: 'Password', kf_dec: 'Key file',
+      empty: 'Add at least one file or folder first.',
+      mismatch: 'The two passwords are different.',
+      nopw_confirm: 'No password and no key file: the content will only be obfuscated (not secure). Continue?',
+      limit_enc: 'Size limit: The files and folders you add can total about 1.5 GB in this page. For larger data use the [[SE]] application written for Windows.',
+      limit_dec: 'Size limit: The _decrypt.cmd file can be about 1.5 GB at most in this page. For larger files use the [[SE]] application written for Windows.',
+      too_big: 'This file is too large for the browser (limit about 1.5 GB in total). For large data use the [[SE]] application written for Windows.',
+      too_big_dec: 'This file is too large for the browser (limit about 1.5 GB). Decrypt it with [[SE]] on Windows: right-click it and choose "Decrypt", or choose it on the Decrypt tab of the SecureEncrypt window.',
+      elapsed: 'Time: {0}', unit_h: 'h', unit_m: 'min', unit_s: 's',
+      no_stream: 'This browser lacks the compression API (CompressionStream). Please use a current Chrome, Edge, Firefox or Safari.',
+      no_crypto: 'The browser cryptography API is not available. Open this page over HTTPS (or from a local file) in a current browser.',
+      home: 'Home',
+      insecure: 'This page was opened over an insecure connection (plain http://), so encryption and decryption are switched off by the browser. Open it over https://, as http://localhost, or as a local file.',
+      dir_hint: 'When you choose a folder, your browser may ask for permission to "upload" it. Your files are NOT uploaded anywhere: this only lets the page read the folder so it can encrypt it on your device.',
+      skipped: 'NOT included (could not be read; a dropped folder that the browser does not pass on can be added with "Add folder..."): {0}',
+      err_noread: 'None of the items could be read. For a folder use "Add folder..." instead of dragging it.',
+      working: 'Working... (deriving the key can take a moment)',
+      enc_done: 'Done: {0} item(s), {1} -> {2}. Mode: {3}.',
+      mode_aes: 'AES-256-CBC + HMAC-SHA256', mode_xor: 'obfuscation only (no password)',
+      enc_note: 'The file runs on Windows by double-click (a window asks for the password) and can be opened with this page on any device.',
+      dl: 'Download', dl_all: 'Download all (ZIP)',
+      sanitized: '{0} name(s) contained characters Windows does not allow and were changed.',
+      dec_info_aes: 'Encrypted with AES-256 ({0} iterations).', dec_info_xor: 'No password: the content is only obfuscated.',
+      dec_need_kf: 'This file needs a key file.', dec_need_pw: 'This file needs a password.',
+      dec_ok: 'Decrypted: {0} file(s), {1}. Integrity check passed.',
+      dec_ok_bad: 'Decrypted, but the integrity check (SHA-256) FAILED. The content may be damaged or modified.',
+      err_wrongpw: 'Wrong password or key file.', err_mac: 'The file is damaged or has been modified (authentication failed). Nothing was decrypted.',
+      err_format: 'This is not a valid SecureEncrypt file (or it is damaged).', err_path: 'The file contains an unsafe path and was rejected.',
+      err_needpw: 'Enter the password (and/or choose the key file).', err_mem: 'Not enough memory for this file in the browser.', err_other: 'Error: {0}',
+      about: 'This application was coded by Abdullah ERT\u00dcRK.<br><a href="https://buymeacoffee.com/abdullaherturk" target="_blank" rel="noopener noreferrer">Buy me a coffee</a>',
+      foot: 'Open source. Compatible with SecureEncrypt for Windows (SEv2 format).',
+      items: 'items'
+    },
+    tr: {
+      sub: 'Taray\u0131c\u0131n\u0131zda AES-256 \u015fifreleme ve \u00e7\u00f6zme',
+      priv: '<b>Hi\u00e7bir \u015fey cihaz\u0131n\u0131zdan \u00e7\u0131kmaz.</b> Dosyalar ve parolalar bu sayfada yerel olarak i\u015flenir; hi\u00e7bir veri hi\u00e7bir yere y\u00fcklenmez.',
+      tab_enc: '\u015eifrele', tab_dec: '\u015eifreyi \u00e7\u00f6z',
+      drop_enc: 'Dosya veya klas\u00f6rleri buraya b\u0131rak\u0131n', add_files: 'Dosya ekle...', add_dir: 'Klas\u00f6r ekle...', clear: 'Temizle',
+      pw: 'Parola (iste\u011fe ba\u011fl\u0131)', pw2: 'Parolay\u0131 tekrarlay\u0131n',
+      pw_hint: 'Parola olmadan i\u00e7erik yaln\u0131zca gizlenir (s\u0131k\u0131\u015ft\u0131rma + XOR); bu bir g\u00fcvenlik sa\u011flamaz, sadece d\u00fcz metnin g\u00f6r\u00fcnmesini engeller.',
+      kf: 'Anahtar dosyas\u0131 (iste\u011fe ba\u011fl\u0131)', kf_pick: 'Anahtar dosyas\u0131 se\u00e7...', kf_hint: 'Anahtar dosyas\u0131 parola yerine ya da parolayla birlikte (iki fakt\u00f6r) kullan\u0131labilir. Ad\u0131 de\u011fil, i\u00e7eri\u011fi \u00f6nemlidir.',
+      btn_enc: '\u015eifrele', btn_dec: '\u00c7\u00f6z',
+      strength: ['\u00c7ok zay\u0131f', 'Zay\u0131f', 'Orta', '\u0130yi', 'G\u00fc\u00e7l\u00fc'],
+      drop_dec: '*_decrypt.cmd dosyas\u0131n\u0131 buraya b\u0131rak\u0131n', pick_dec: '*_decrypt.cmd se\u00e7...',
+      pw_dec: 'Parola', kf_dec: 'Anahtar dosyas\u0131',
+      empty: '\u00d6nce en az bir dosya veya klas\u00f6r ekleyin.',
+      mismatch: '\u0130ki parola birbirinden farkl\u0131.',
+      nopw_confirm: 'Parola ve anahtar dosyas\u0131 yok: i\u00e7erik yaln\u0131zca gizlenir (g\u00fcvenli de\u011fildir). Devam edilsin mi?',
+      limit_enc: 'Boyut s\u0131n\u0131r\u0131: Bu sayfada eklenen dosya ve klas\u00f6rlerin toplam\u0131 en fazla yakla\u015f\u0131k 1,5 GB olabilir. Daha b\u00fcy\u00fck veriler i\u00e7in Windows i\u00e7in yaz\u0131lan [[SE]] uygulamas\u0131n\u0131 kullan\u0131n.',
+      limit_dec: 'Boyut s\u0131n\u0131r\u0131: Bu sayfada _decrypt.cmd dosyas\u0131 en fazla yakla\u015f\u0131k 1,5 GB olabilir. Daha b\u00fcy\u00fck dosyalar i\u00e7in Windows i\u00e7in yaz\u0131lan [[SE]] uygulamas\u0131n\u0131 kullan\u0131n.',
+      too_big: 'Bu dosya taray\u0131c\u0131 i\u00e7in \u00e7ok b\u00fcy\u00fck (toplam yakla\u015f\u0131k 1,5 GB s\u0131n\u0131r\u0131). Daha b\u00fcy\u00fck veriler i\u00e7in Windows i\u00e7in yaz\u0131lan [[SE]] uygulamas\u0131n\u0131 kullan\u0131n.',
+      too_big_dec: 'Bu dosya taray\u0131c\u0131 i\u00e7in \u00e7ok b\u00fcy\u00fck (yakla\u015f\u0131k 1,5 GB s\u0131n\u0131r\u0131). Windows i\u00e7in yaz\u0131lan [[SE]] uygulamas\u0131n\u0131 kullan\u0131n: Dosyaya sa\u011f t\u0131klay\u0131p "\u015eifreyi \u00e7\u00f6z" seçin ya da SecureEncrypt penceresinin "\u015eifreyi \u00e7\u00f6z" sekmesinden se\u00e7in.',
+      elapsed: 'S\u00fcre: {0}', unit_h: 'sa', unit_m: 'dk', unit_s: 'sn',
+      no_stream: 'Bu taray\u0131c\u0131da s\u0131k\u0131\u015ft\u0131rma API\'si (CompressionStream) yok. L\u00fctfen g\u00fcncel Chrome, Edge, Firefox veya Safari kullan\u0131n.',
+      no_crypto: 'Taray\u0131c\u0131n\u0131n \u015fifreleme API\'si kullan\u0131lam\u0131yor. Bu sayfay\u0131 g\u00fcncel bir taray\u0131c\u0131da HTTPS \u00fczerinden (ya da yerel dosya olarak) a\u00e7\u0131n.',
+      home: 'Ana sayfa',
+      insecure: 'Bu sayfa g\u00fcvenli olmayan bir ba\u011flant\u0131yla (d\u00fcz http://) a\u00e7\u0131ld\u0131\u011f\u0131 i\u00e7in taray\u0131c\u0131 \u015fifreleme ve \u00e7\u00f6zmeyi kapat\u0131r. Sayfay\u0131 https:// \u00fczerinden, http://localhost olarak ya da yerel dosya olarak a\u00e7\u0131n.',
+      dir_hint: 'Klas\u00f6r se\u00e7ti\u011finizde taray\u0131c\u0131 "y\u00fckleme" izni isteyebilir. Dosyalar\u0131n\u0131z hi\u00e7bir yere y\u00fcklenmez: bu izin yaln\u0131zca sayfan\u0131n klas\u00f6r\u00fc okuyup cihaz\u0131n\u0131zda \u015fifreleyebilmesi i\u00e7indir.',
+      skipped: 'DAH\u0130L ED\u0130LMED\u0130 (okunamad\u0131; s\u00fcr\u00fckleyip b\u0131rak\u0131lan ama taray\u0131c\u0131n\u0131n iletmedi\u011fi bir klas\u00f6r "Klas\u00f6r ekle..." ile eklenebilir): {0}',
+      err_noread: 'Hi\u00e7bir \u00f6\u011fe okunamad\u0131. Klas\u00f6r i\u00e7in s\u00fcr\u00fcklemek yerine "Klas\u00f6r ekle..." kullan\u0131n.',
+      working: '\u00c7al\u0131\u015f\u0131yor... (anahtar t\u00fcretme biraz s\u00fcrebilir)',
+      enc_done: 'Tamam: {0} \u00f6\u011fe, {1} -> {2}. Mod: {3}.',
+      mode_aes: 'AES-256-CBC + HMAC-SHA256', mode_xor: 'yaln\u0131zca gizleme (parolas\u0131z)',
+      enc_note: 'Dosya Windows\'ta \u00e7ift t\u0131klayarak \u00e7al\u0131\u015f\u0131r (bir pencere parolay\u0131 sorar) ve her cihazda bu sayfayla a\u00e7\u0131labilir.',
+      dl: '\u0130ndir', dl_all: 'T\u00fcm\u00fcn\u00fc indir (ZIP)',
+      sanitized: '{0} ad Windows\'un izin vermedi\u011fi karakterler i\u00e7erdi\u011fi i\u00e7in de\u011fi\u015ftirildi.',
+      dec_info_aes: 'AES-256 ile \u015fifrelenmi\u015f ({0} yineleme).', dec_info_xor: 'Parola yok: i\u00e7erik yaln\u0131zca gizlenmi\u015f.',
+      dec_need_kf: 'Bu dosya bir anahtar dosyas\u0131 gerektiriyor.', dec_need_pw: 'Bu dosya bir parola gerektiriyor.',
+      dec_ok: '\u00c7\u00f6z\u00fcld\u00fc: {0} dosya, {1}. B\u00fct\u00fcnl\u00fck denetimi ge\u00e7ti.',
+      dec_ok_bad: '\u00c7\u00f6z\u00fcld\u00fc ama b\u00fct\u00fcnl\u00fck denetimi (SHA-256) BA\u015eARISIZ. \u0130\u00e7erik bozulmu\u015f veya de\u011fi\u015ftirilmi\u015f olabilir.',
+      err_wrongpw: 'Parola veya anahtar dosyas\u0131 yanl\u0131\u015f.', err_mac: 'Dosya bozuk ya da de\u011fi\u015ftirilmi\u015f (kimlik do\u011frulama ba\u015far\u0131s\u0131z). Hi\u00e7bir \u015fey \u00e7\u00f6z\u00fclmedi.',
+      err_format: 'Bu ge\u00e7erli bir SecureEncrypt dosyas\u0131 de\u011fil (ya da bozuk).', err_path: 'Dosya g\u00fcvenli olmayan bir yol i\u00e7eriyor ve reddedildi.',
+      err_needpw: 'Parolay\u0131 girin (ve/veya anahtar dosyas\u0131n\u0131 se\u00e7in).', err_mem: 'Bu dosya i\u00e7in taray\u0131c\u0131da yeterli bellek yok.', err_other: 'Hata: {0}',
+      about: 'Bu uygulama Abdullah ERT\u00dcRK taraf\u0131ndan kodlanm\u0131\u015ft\u0131r.<br><a href="https://buymeacoffee.com/abdullaherturk" target="_blank" rel="noopener noreferrer">Bana bir kahve \u0131smarla</a>',
+      foot: 'A\u00e7\u0131k kaynak. SecureEncrypt for Windows (SEv2 bi\u00e7imi) ile uyumludur.',
+      items: '\u00f6\u011fe'
+    }
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var lang = 'en', T = TXT.en;
+  var encItems = [];                 // { rel, isDir, file, size, mtime }
+  var encKf = null, decKf = null, decBuf = null, decMeta = null;
+  var urls = [];
+
+  function fmt(s) { for (var i = 1; i < arguments.length; i++) s = s.split('{' + (i - 1) + '}').join(String(arguments[i])); return s; }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  // text is escaped; the token [[SE]] becomes a link to the Windows application's repository
+  function rich(s) {
+    return esc(s).split('[[SE]]').join('<a href="https://github.com/abdullah-erturk/Secure-Encrypt" target="_blank" rel="noopener noreferrer">SecureEncrypt</a>');
+  }
+  function size(n) {
+    if (n >= 1073741824) return (n / 1073741824).toFixed(2) + ' GB';
+    if (n >= 1048576) return (n / 1048576).toFixed(2) + ' MB';
+    if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+    return n + ' B';
+  }
+  // 42.35 s / 11 min 54 s / 1 h 5 min 3 s (the number is written with a comma in Turkish)
+  function dur(sec) {
+    if (sec < 60) { var t = sec.toFixed(2); return (lang === 'tr' ? t.replace('.', ',') : t) + ' ' + T.unit_s; }
+    var tot = Math.round(sec), h = Math.floor(tot / 3600), m = Math.floor((tot % 3600) / 60), s = tot % 60;
+    return (h ? h + ' ' + T.unit_h + ' ' : '') + m + ' ' + T.unit_m + ' ' + s + ' ' + T.unit_s;
+  }
+  function store(k, v) { try { localStorage.setItem(k, v); } catch (e) { } }
+  function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  // a message can be given as a function so that it is built again (in the new language) when the language changes
+  var shown = {}, lastEnc = null, lastDec = null;
+  function show(id, cls, t) {
+    shown[id] = (typeof t === 'function') ? { cls: cls, fn: t } : null;
+    var text = (typeof t === 'function') ? t() : t;
+    $(id).innerHTML = text ? '<div class="msg ' + cls + '">' + rich(text) + '</div>' : '';
+  }
+  function reshow() { ['msgEnc', 'msgDec'].forEach(function (id) { var s = shown[id]; if (s) show(id, s.cls, s.fn); }); }
+  function busy(which, on) {
+    $(which === 'enc' ? 'barEnc' : 'barDec').classList.toggle('hidden', !on);
+    var ids = which === 'enc' ? ['btnEncrypt'] : ['btnDecrypt'];
+    ids.forEach(function (i) { $(i).disabled = on; });
+    lockUi(on);
+  }
+  $('homeBtn').addEventListener('click', function (e) { if (document.body.classList.contains('working')) e.preventDefault(); });
+  // while a job runs everything else is locked: tabs, language, file pickers, fields, the Home link and drops
+  var locked = [];
+  function lockUi(on) {
+    document.body.classList.toggle('working', on);
+    if (on) {
+      locked = [];
+      Array.prototype.forEach.call(document.querySelectorAll('button, input, select, textarea'), function (e) {
+        if (!e.disabled) { e.disabled = true; locked.push(e); }
+      });
+    } else {
+      locked.forEach(function (e) { e.disabled = false; });
+      locked = [];
+    }
+    var h = $('homeBtn'); if (h) { if (on) h.setAttribute('tabindex', '-1'); else h.removeAttribute('tabindex'); }
+  }
+  function revokeUrls() { urls.forEach(function (u) { URL.revokeObjectURL(u); }); urls = []; }
+  function link(blob, name, label) {
+    var u = URL.createObjectURL(blob); urls.push(u);
+    var a = document.createElement('a'); a.className = 'btn'; a.href = u; a.download = name; a.textContent = label; return a;
+  }
+
+  // ------------------------------------------------------------ texts
+  function applyLang(l) {
+    lang = TXT[l] ? l : 'en'; T = TXT[lang];
+    document.documentElement.lang = lang; $('lang').value = lang;
+    $('t_sub').textContent = T.sub; $('t_priv').innerHTML = T.priv;
+    $('tabEnc').textContent = T.tab_enc; $('tabDec').textContent = T.tab_dec;
+    $('t_home').textContent = T.home; $('homeBtn').title = T.home;
+    $('t_insecure').textContent = T.insecure; $('t_insecure').classList.toggle('hidden', !!window.isSecureContext);
+    $('t_limit_enc').innerHTML = rich(T.limit_enc); $('t_limit_dec').innerHTML = rich(T.limit_dec);
+    $('t_dir_hint').textContent = T.dir_hint; $('t_drop_enc').textContent = T.drop_enc; $('btnAddFiles').textContent = T.add_files; $('btnAddDir').textContent = T.add_dir; $('btnClear').textContent = T.clear; $('btnClearDec').textContent = T.clear;
+    $('t_pw').textContent = T.pw; $('t_pw2').textContent = T.pw2; $('t_pw_hint').textContent = T.pw_hint;
+    $('t_kf').textContent = T.kf; $('btnKfEnc').textContent = T.kf_pick; $('t_kf_hint').textContent = T.kf_hint;
+    $('btnEncrypt').textContent = T.btn_enc; $('btnDecrypt').textContent = T.btn_dec;
+    $('t_drop_dec').textContent = T.drop_dec; $('btnPickDec').textContent = T.pick_dec;
+    $('t_pwD').textContent = T.pw_dec; $('t_kfD').textContent = T.kf_dec; $('btnKfDec').textContent = T.kf_pick;
+    $('t_about').innerHTML = T.about; $('t_foot').textContent = T.foot;
+    renderList(); meter(); if (decMeta) decInfo();
+    reshow(); renderEnc(); renderDec();
+    store('se_lang', lang);
+  }
+
+  // ------------------------------------------------------------ tabs
+  function tab(enc) {
+    $('tabEnc').setAttribute('aria-selected', enc); $('tabDec').setAttribute('aria-selected', !enc);
+    $('paneEnc').classList.toggle('hidden', !enc); $('paneDec').classList.toggle('hidden', enc);
+  }
+  $('tabEnc').onclick = function () { tab(true); };
+  $('tabDec').onclick = function () { tab(false); };
+
+  // ------------------------------------------------------------ encrypt: items
+  var BAD = /[<>:"\\|?*\u0000-\u001f]/g, sanitizedCount = 0;
+  function cleanRel(rel) {
+    var parts = rel.split('/').filter(function (p) { return p !== '' && p !== '.' && p !== '..'; });
+    return parts.map(function (p) {
+      var q = p.replace(BAD, '_').replace(/[. ]+$/, '');
+      if (q === '') q = '_';
+      if (q !== p) sanitizedCount++;
+      return q;
+    }).join('/');
+  }
+  function addItem(rel, file, isDir, via) {
+    var r = cleanRel(rel);
+    if (!r) return;
+    var n = r, i = 1;
+    for (;;) {
+      var dup = false;
+      for (var k = 0; k < encItems.length; k++) if (encItems[k].rel.toLowerCase() === n.toLowerCase()) { dup = true; break; }
+      if (!dup) break;
+      if (file && encItems.some(function (x) { return x.file === file; })) return;      // the same file again
+      var dot = r.lastIndexOf('.'), sl = r.lastIndexOf('/');
+      n = (dot > sl + 0 && !isDir) ? r.slice(0, dot) + ' (' + (++i) + ')' + r.slice(dot) : r + ' (' + (++i) + ')';
+    }
+    encItems.push({ rel: n, isDir: isDir, file: file, size: file ? file.size : 0, mtime: file ? file.lastModified : Date.now(), via: via || 'picker' });
+  }
+  function renderList() {
+    var ul = $('listEnc'); ul.innerHTML = '';
+    // show top-level groups: a folder is one row
+    var groups = {}, order = [];
+    encItems.forEach(function (it, idx) {
+      var top = it.rel.split('/')[0], g = groups[top];
+      if (!g) { g = groups[top] = { name: top, count: 0, size: 0, folder: it.rel.indexOf('/') >= 0 || it.isDir, idx: [] }; order.push(top); }
+      g.count++; g.size += it.size; g.idx.push(idx);
+    });
+    order.forEach(function (k) {
+      var g = groups[k], li = document.createElement('li');
+      li.innerHTML = '<span aria-hidden="true">' + (g.folder ? '&#128193;' : '&#128196;') + '</span><span class="nm">' + esc(g.name) + '</span><span class="sz">' +
+        (g.folder ? g.count + ' ' + esc(T.items) + ' &middot; ' : '') + size(g.size) + '</span>';
+      var x = document.createElement('button'); x.className = 'x'; x.textContent = '\u00d7'; x.setAttribute('aria-label', 'remove');
+      x.onclick = function () { encItems = encItems.filter(function (_, i) { return g.idx.indexOf(i) < 0; }); renderList(); };
+      li.appendChild(x); ul.appendChild(li);
+    });
+    checkSize();
+  }
+  // warn as soon as the selection is too large, not only when Encrypt is pressed
+  var sizeWarn = false;
+  function checkSize() {
+    var total = 0; encItems.forEach(function (i) { total += i.size; });
+    if (total > 1.5 * 1073741824) { sizeWarn = true; show('msgEnc', 'bad', function () { return T.too_big; }); }
+    else if (sizeWarn) { sizeWarn = false; show('msgEnc', '', ''); }
+  }
+  // the input is emptied BEFORE the picker opens (so the same file can be chosen again), never right after the choice:
+  // on Android the chosen files must stay referenced by the input while they are being read
+  $('btnAddFiles').onclick = function () { $('inFiles').value = ''; $('inFiles').click(); };
+  $('btnAddDir').onclick = function () { $('inDir').value = ''; $('inDir').click(); };
+  // "Clear" empties the whole tab: the items, passwords, key file, messages and result links
+  $('btnClear').onclick = function () {
+    revokeUrls(); encItems = []; lastEnc = null; sanitizedCount = 0; encKf = null;
+    $('pw1').value = ''; $('pw2').value = ''; $('kfEncName').textContent = ''; $('btnKfEncClear').classList.add('hidden');
+    $('resEnc').innerHTML = ''; show('msgEnc', '', ''); meter(); renderList();
+  };
+  $('btnClearDec').onclick = function () {
+    revokeUrls(); decBuf = null; decMeta = null; decKf = null; lastDec = null;
+    $('inDec').value = ''; $('decName').textContent = ''; $('decInfo').innerHTML = '';
+    $('pwD').value = ''; $('kfDecName').textContent = ''; $('decPwBox').classList.add('hidden'); $('decKfBox').classList.add('hidden');
+    $('btnDecrypt').disabled = true; $('resDec').innerHTML = ''; show('msgDec', '', '');
+  };
+  $('inFiles').onchange = function () { Array.prototype.forEach.call(this.files, function (f) { addItem(f.name, f, false); }); renderList(); };
+  $('inDir').onchange = function () {
+    Array.prototype.forEach.call(this.files, function (f) { addItem(f.webkitRelativePath || f.name, f, false); });
+    renderList();
+  };
+
+  function readEntries(reader) {
+    return new Promise(function (res, rej) {
+      var all = [];
+      (function next() { reader.readEntries(function (b) { if (!b.length) res(all); else { all = all.concat(Array.prototype.slice.call(b)); next(); } }, rej); })();
+    });
+  }
+  function walk(entry) {
+    if (entry.isDirectory) {
+      return readEntries(entry.createReader()).then(function (kids) {
+        if (!kids.length) { addItem(entry.fullPath.replace(/^\//, ''), null, true, 'entry'); return; }
+        return kids.reduce(function (p, k) { return p.then(function () { return walk(k); }); }, Promise.resolve());
+      }).catch(function () { });
+    }
+    return new Promise(function (res) { entry.file(function (f) { addItem(entry.fullPath.replace(/^\//, ''), f, false, 'entry'); res(); }, function () { res(); }); });
+  }
+  // File System Access handles (Chromium: Edge, Chrome); used when the classic entries could not be read
+  function walkHandle(h, path) {
+    if (h.kind === 'file') return h.getFile().then(function (f) { addItem(path, f, false, 'handle'); });
+    var it = h.values(), any = false;
+    function next() {
+      return it.next().then(function (r) {
+        if (r.done) { if (!any) addItem(path, null, true, 'handle'); return; }
+        any = true;
+        return walkHandle(r.value, path + '/' + r.value.name).then(next);
+      });
+    }
+    return next();
+  }
+  function dropEncrypt(dt) {
+    // everything must be requested from the DataTransfer synchronously (it is emptied after the event)
+    var entries = [], handles = [], files = Array.prototype.slice.call(dt.files || []), i, en;
+    if (dt.items) for (i = 0; i < dt.items.length; i++) {
+      var item = dt.items[i];
+      if (item.kind !== 'file') continue;
+      en = null;
+      try { if (item.webkitGetAsEntry) en = item.webkitGetAsEntry(); } catch (x) { }
+      if (en) entries.push(en);
+      // only in a secure context: on plain http the browser can even kill the tab for this call
+      try { if (window.isSecureContext && item.getAsFileSystemHandle) handles.push(item.getAsFileSystemHandle().catch(function () { return null; })); } catch (y) { }
+    }
+    var before = encItems.length;
+    entries.reduce(function (p, e) { return p.then(function () { return walk(e); }); }, Promise.resolve())
+      .catch(function () { })
+      .then(function () {
+        if (encItems.length !== before) return;
+        return Promise.all(handles).then(function (hs) {
+          return hs.reduce(function (p, h) { return p.then(function () { return h ? walkHandle(h, h.name) : null; }); }, Promise.resolve());
+        }).catch(function () { });
+      })
+      .then(function () {
+        // nothing could be read as entries or handles: use the plain file list
+        if (encItems.length === before) files.forEach(function (f) { addItem(f.name, f, false, 'files'); });
+        renderList();
+      });
+  }
+  // the whole page is a drop target for the visible tab (a drop beside the box must not open the file in the browser)
+  function activeBox() { return $('paneEnc').classList.contains('hidden') ? $('dropDec') : $('dropEnc'); }
+  function clearOver() { $('dropEnc').classList.remove('over'); $('dropDec').classList.remove('over'); }
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    document.addEventListener(ev, function (e) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; activeBox().classList.add('over'); });
+  });
+  document.addEventListener('dragleave', function (e) { if (!e.relatedTarget) clearOver(); });
+  document.addEventListener('drop', function (e) {
+    e.preventDefault(); clearOver();
+    if (!e.dataTransfer || document.body.classList.contains('working')) return;
+    if ($('paneEnc').classList.contains('hidden')) { var f = e.dataTransfer.files[0]; if (f) loadDec(f); }
+    else dropEncrypt(e.dataTransfer);
+  });
+
+  // ------------------------------------------------------------ encrypt: password
+  function strength(pw) {
+    var len = pw.length, lo = /[a-z\u00df-\u00ff]/.test(pw), up = /[A-Z\u00c0-\u00de]/.test(pw), di = /\d/.test(pw), ot = /[^A-Za-z\d\u00c0-\u00ff]/.test(pw);
+    var classes = (lo ? 1 : 0) + (up ? 1 : 0) + (di ? 1 : 0) + (ot ? 1 : 0), s = 0;
+    if (len >= 8) s++; if (len >= 12) s++; if (len >= 16) s++; if (len >= 20) s++; if (classes >= 3) s++;
+    if (classes < 2 && len < 20 && s > 1) s = 1;
+    return Math.min(s, 4);
+  }
+  function meter() {
+    var pw = $('pw1').value, bars = $('meter').querySelectorAll('i');
+    var s = pw ? strength(pw) : -1, col = s <= 1 ? 'var(--bad)' : (s === 2 ? 'var(--warn)' : 'var(--ok)');
+    for (var i = 0; i < bars.length; i++) bars[i].style.background = (pw && i <= Math.min(s, 3)) ? col : '';
+    $('meterTxt').textContent = pw ? T.strength[s] : '';
+  }
+  $('pw1').oninput = meter;
+
+  function pickKf(btn, input, nameEl, clearBtn, set) {
+    $(btn).onclick = function () { $(input).value = ''; $(input).click(); };
+    $(input).onchange = function () {
+      var f = this.files[0];
+      if (!f) return;
+      f.arrayBuffer().then(function (b) { set(new Uint8Array(b)); $(nameEl).textContent = f.name; if (clearBtn) $(clearBtn).classList.remove('hidden'); });
+    };
+    if (clearBtn) $(clearBtn).onclick = function () { set(null); $(nameEl).textContent = ''; $(clearBtn).classList.add('hidden'); };
+  }
+  pickKf('btnKfEnc', 'inKfEnc', 'kfEncName', 'btnKfEncClear', function (v) { encKf = v; });
+  pickKf('btnKfDec', 'inKfDec', 'kfDecName', null, function (v) { decKf = v; });
+
+  // ------------------------------------------------------------ encrypt: run
+  var COMPRESSED = /\.(zip|rar|7z|gz|tgz|bz2|xz|zst|jpe?g|png|gif|webp|heic|avif|mp3|aac|ogg|opus|flac|m4a|mp4|m4v|mkv|webm|mov|avi|docx|xlsx|pptx|odt|ods|odp|apk|jar|pdf|cab|msi)$/i;
+  function b64bytes(s) { var b = atob(s), o = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) o[i] = b.charCodeAt(i); return o; }
+  function head() {
+    if (!HEAD_B64 || HEAD_B64.charAt(0) === '@') return Promise.resolve(new Uint8Array(0));
+    return new Response(new Blob([b64bytes(HEAD_B64)]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer().then(function (b) { return new Uint8Array(b); });
+  }
+  function errText(e) {
+    var c = e && e.code;
+    if (c === 'WRONGPW') return T.err_wrongpw;
+    if (c === 'MAC') return T.err_mac;
+    if (c === 'FORMAT') return T.err_format;
+    if (c === 'PATH') return T.err_path;
+    if (c === 'NEEDPW') return T.err_needpw;
+    if (c === 'NOREAD') return T.err_noread;
+    if (e && (e.name === 'RangeError' || /memory|allocation/i.test(e.message))) return T.err_mem;
+    return fmt(T.err_other, (e && e.message) || e);
+  }
+  function hasStreams() { return typeof CompressionStream === 'function' && typeof DecompressionStream === 'function'; }
+  function cryptoMissing() { return !(window.crypto && window.crypto.subtle) ? T.no_crypto : ''; }
+
+  $('btnEncrypt').onclick = function () {
+    revokeUrls(); lastEnc = null; $('resEnc').innerHTML = ''; show('msgEnc', '', '');
+    if (!encItems.length) return show('msgEnc', 'warn', function () { return T.empty; });
+    if (cryptoMissing()) return show('msgEnc', 'bad', cryptoMissing);
+    if (!hasStreams()) return show('msgEnc', 'bad', function () { return T.no_stream; });
+    var p1 = $('pw1').value, p2 = $('pw2').value;
+    if (p1 !== p2) return show('msgEnc', 'warn', function () { return T.mismatch; });
+    var total = 0; encItems.forEach(function (i) { total += i.size; });
+    if (total > 1.5 * 1073741824) return show('msgEnc', 'bad', function () { return T.too_big; });
+    if (!p1 && !encKf && !window.confirm(T.nopw_confirm)) return;
+
+    busy('enc', true); show('msgEnc', 'info', function () { return T.working; });
+    var t0 = Date.now();
+    var first = encItems[0].rel.split('/')[0], one = !encItems[0].isDir && encItems[0].rel.indexOf('/') < 0;
+    var base = one ? first.replace(/\.[^.]*$/, '') || first : first;
+    var outName = base + '_decrypt.cmd';
+    var entries = [], skipped = [];
+    Promise.all(encItems.map(function (it) {
+      if (it.isDir) { entries.push({ rel: it.rel, isDir: true, mtime: it.mtime }); return null; }
+      // an item that cannot be read (for example a folder that the browser passed on as a file) is left out, not fatal
+      return it.file.arrayBuffer().then(function (b) { entries.push({ rel: it.rel, isDir: false, mtime: it.mtime, data: new Uint8Array(b) }); })
+        .catch(function () { skipped.push(it.rel + ' [' + it.via + ', ' + it.size + ' B, ' + (it.file.type || '-') + ']'); });
+    })).then(function () {
+      if (!entries.length) { var e = new Error('NOREAD'); e.code = 'NOREAD'; throw e; }
+      return head();
+    }).then(function (h) {
+      // keep the original order
+      var order = {}; encItems.forEach(function (it, i) { order[it.rel] = i; });
+      entries.sort(function (a, b) { return order[a.rel] - order[b.rel]; });
+      var allPacked = encItems.every(function (i) { return i.isDir || COMPRESSED.test(i.rel); });
+      return SEcore.encode({ entries: entries, password: p1, keyfile: encKf, gzip: !allPacked, head: h });
+    }).then(function (r) {
+      lastEnc = { blob: new Blob([r.data], { type: 'application/octet-stream' }), name: outName, n: entries.length, total: total, len: r.data.length, mode: r.mode, san: sanitizedCount, skipped: skipped, sec: (Date.now() - t0) / 1000 };
+      sanitizedCount = 0;
+      renderEnc();
+    }).catch(function (e) { show('msgEnc', 'bad', function () { return errText(e); }); })
+      .then(function () { busy('enc', false); });
+  };
+  function renderEnc() {
+    var r = lastEnc; $('resEnc').innerHTML = '';
+    if (!r) return;
+    show('msgEnc', r.mode === 2 ? 'ok' : 'warn', function () {
+      var msg = fmt(T.enc_done, r.n, size(r.total), size(r.len), r.mode === 2 ? T.mode_aes : T.mode_xor) + '\n' + fmt(T.elapsed, dur(r.sec)) + '\n' + T.enc_note;
+      if (r.san) msg += '\n' + fmt(T.sanitized, r.san);
+      if (r.skipped.length) msg += '\n' + fmt(T.skipped, r.skipped.join(', '));
+      return msg;
+    });
+    $('resEnc').appendChild(link(r.blob, r.name, T.dl + ': ' + r.name));
+  }
+
+  // ------------------------------------------------------------ decrypt
+  function decInfo() {
+    var m = decMeta, t = m.mode === 2 ? fmt(T.dec_info_aes, m.iterations) : T.dec_info_xor;
+    if (m.usesKf) t += '\n' + T.dec_need_kf; else if (m.mode === 2) t += '\n' + T.dec_need_pw;
+    $('decInfo').innerHTML = '<div class="msg info">' + esc(t) + '</div>';
+    $('decPwBox').classList.toggle('hidden', m.mode !== 2);
+    $('decKfBox').classList.toggle('hidden', !m.usesKf);
+  }
+  function loadDec(file) {
+    revokeUrls(); lastDec = null; $('resDec').innerHTML = ''; show('msgDec', '', ''); decMeta = null; decBuf = null;
+    $('decInfo').innerHTML = ''; $('btnDecrypt').disabled = true;
+    $('decName').textContent = file.name + ' (' + size(file.size) + ')';
+    // the whole file is read into memory: say clearly why a very large file cannot be used here
+    if (file.size > 1.5 * 1073741824) { show('msgDec', 'bad', function () { return T.too_big_dec; }); return; }
+    file.arrayBuffer().then(function (b) {
+      var u8 = new Uint8Array(b);
+      decMeta = SEcore.inspect(u8); decBuf = u8; decInfo(); $('btnDecrypt').disabled = false;
+    }).catch(function (e) { show('msgDec', 'bad', function () { return errText(e); }); });
+  }
+  $('btnPickDec').onclick = function () { $('inDec').value = ''; $('inDec').click(); };
+  $('inDec').onchange = function () { if (this.files[0]) loadDec(this.files[0]); };
+
+  $('btnDecrypt').onclick = function () {
+    if (!decBuf) return;
+    if (cryptoMissing()) return show('msgDec', 'bad', cryptoMissing);
+    if (!hasStreams()) return show('msgDec', 'bad', function () { return T.no_stream; });
+    revokeUrls(); lastDec = null; $('resDec').innerHTML = ''; show('msgDec', 'info', function () { return T.working; }); busy('dec', true);
+    var t0 = Date.now();
+    SEcore.decode(decBuf, $('pwD').value, decKf).then(function (r) {
+      var files = r.entries, tot = 0, nf = 0;
+      files.forEach(function (f) { if (!f.isDir) { tot += f.size; nf++; } });
+      lastDec = { files: files, tot: tot, nf: nf, shaOk: r.shaOk, zip: null, sec: (Date.now() - t0) / 1000 };
+      renderDec();
+    }).catch(function (e) { show('msgDec', 'bad', function () { return errText(e); }); })
+      .then(function () { busy('dec', false); });
+  };
+  function renderDec() {
+    var d = lastDec; $('resDec').innerHTML = '';
+    if (!d) return;
+    show('msgDec', d.shaOk ? 'ok' : 'warn', function () { return (d.shaOk ? fmt(T.dec_ok, d.nf, size(d.tot)) : T.dec_ok_bad) + '\n' + fmt(T.elapsed, dur(d.sec)); });
+    var ul = document.createElement('ul'); ul.className = 'list'; ul.style.maxHeight = '320px';
+    d.files.forEach(function (f) {
+      var li = document.createElement('li');
+      li.innerHTML = '<span aria-hidden="true">' + (f.isDir ? '&#128193;' : '&#128196;') + '</span><span class="nm">' + esc(f.rel) + '</span><span class="sz">' + (f.isDir ? '' : size(f.size)) + '</span>';
+      if (!f.isDir) li.appendChild(link(new Blob([f.data], { type: 'application/octet-stream' }), f.rel.split('/').pop(), T.dl));
+      ul.appendChild(li);
+    });
+    $('resDec').appendChild(ul);
+    if (d.files.length > 1 && d.tot < 3.5 * 1073741824) {
+      if (!d.zip) d.zip = new Blob(SEcore.zip(d.files), { type: 'application/zip' });
+      var z = document.createElement('div'); z.className = 'row';
+      z.appendChild(link(d.zip, 'SecureEncrypt_decrypted.zip', T.dl_all));
+      $('resDec').appendChild(z);
+    }
+  }
+
+  // ------------------------------------------------------------ start
+  $('lang').onchange = function () { applyLang(this.value); };
+  var saved = load('se_lang'), nav = ((navigator.language || 'en') + '').toLowerCase();
+  applyLang(saved && TXT[saved] ? saved : (nav.indexOf('tr') === 0 ? 'tr' : 'en'));
+})();
+</script>
+</body>
+</html>

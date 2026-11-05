@@ -1,174 +1,60 @@
 $ErrorActionPreference = 'Stop'
 $SelfPath = $env:SE_SELF
-$Version = '6.0'
-$IsTR = ([Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName -eq 'tr')
-if ($env:SE_LANG) { $IsTR = ($env:SE_LANG -eq 'tr') }
-
+# Started hidden and detached by the launcher: nobody deletes the extracted copy of this script afterwards, so it removes
+# itself (PowerShell has read the whole file by now).
+if ($env:SE_DETACHED -eq '1') { try { Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue } catch { } }
+$script:RunItems = @()
+$Version = '7.0'
 # ---------------------------------------------------------------- texts
+# The texts live in src\lang\*.ini; build.ps1 embeds them as $LangData (language code -> key -> text).
+# Keys that a language lacks fall back to English. The same block is in engine.ps1 and dec.ps1.
 
-$M_EN = @{
-    press         = 'Press any key to exit...'
-    use_hint1     = 'You can use it without installation.'
-    use_hint2     = 'To encrypt files or folders, drag and drop them onto this script (several at once is fine).'
-    need_admin    = 'Administrator privileges required for installation. Requesting permission...'
-    admin_denied  = 'Administrator permission was not granted.'
-    installed     = 'SecureEncrypt is already installed on the system.'
-    menu          = '  [1] Update / reinstall|  [2] Uninstall|  [3] Exit'
-    choice        = 'Your choice [1/2/3] (type the number, then press ENTER)'
-    not_installed = 'SecureEncrypt is not installed on the system.'
-    q_install     = 'Do you want to install it'
-    installing    = 'Installing...'
-    install_ok    = 'Installation completed successfully.'
-    install_menu  = 'Right-click menu added: Encrypt for files/folders, Decrypt for *_decrypt.cmd files.'
-    uninstalling  = 'Uninstalling...'
-    uninstall_ok  = 'Uninstallation completed successfully.'
-    cancelled     = 'Cancelled.'
-    menu_encrypt  = 'Encrypt (Secure Encrypt AES-256)'
-    menu_dec      = 'Decrypt (Secure Encrypt)'
-    warning       = '========================== WARNING =========================='
-    forbidden     = 'This location is a system folder. Encryption cannot be performed here for security reasons.'
-    notfound      = 'Path not found: {0}'
-    items         = 'Items to process ({0}):'
-    more_items    = '  ... and {0} more'
-    t_pw          = 'Password (press ENTER to skip)'
-    t_pw2         = 'Confirm password'
-    pw_strength   = 'Password strength: {0}'
-    strength0     = 'very weak'
-    strength1     = 'weak'
-    strength2     = 'fair'
-    strength3     = 'good'
-    strength4     = 'strong'
-    pw_mismatch   = 'Passwords do not match. Try again.'
-    pw_weak       = 'This password is weak. Use it anyway?'
-    q_adv         = 'Advanced options (key file, delete originals)'
-    t_kf          = 'Key file (path, drag a file here, or ? to browse; ENTER to skip)'
-    kf_missing    = 'Key file not found: {0}'
-    kf_pick_title = 'Select the key file'
-    kf_pick_fail  = 'The file dialog could not be opened (for example on Server Core). Please type the path instead.'
-    late_added    = 'Added {0} more selected item(s) - {1} in total.'
-    late_skipped  = 'Skipped (system folder): {0}'
-    kf_note       = 'NOTE: if the content of this key file changes or the file is lost, your data can no longer be opened. Keep a backup copy.'
-    no_enc        = 'No password or key file: data will NOT be encrypted (only compressed and obfuscated).'
-    enc_on        = 'Encryption: AES-256-CBC + HMAC-SHA256, key from PBKDF2-SHA256 ({0} iterations).'
-    dont_forget   = 'IMPORTANT: DO NOT FORGET THIS PASSWORD / KEY FILE. Without it the data cannot be recovered.'
-    t_delete      = 'What should happen to the original item(s) after encryption?|  [N] Keep them (default)|  [D] Delete them|  [S] Overwrite, then delete them'
-    t_delete_ask  = 'Your choice [N/D/S] (ENTER = N)'
-    exists_q      = 'Output file already exists: {0}  Overwrite?'
-    section       = '================== ENCRYPT PROCESS =================='
-    src_info      = 'Entries  : {0}    Total size: {1}'
-    src_sha       = 'SHA256   : {0}'
-    mode_label    = 'Mode     : {0}'
-    mode1         = 'compressed + obfuscated (NOT encrypted)'
-    mode2         = 'AES-256 encrypted'
-    comp_on       = 'GZip compressed'
-    comp_off      = 'not compressed (already compressed type)'
-    skipped       = 'Skipped (not accessible / link): {0}'
-    out_info      = 'Decrypt file: {0}  ({1})'
-    verified      = 'Verification passed (output decrypted and compared).'
-    changed       = 'A source file changed while it was being processed. Please try again.'
-    empty         = 'Nothing to encrypt.'
-    err           = 'ERROR: {0}'
-    del_skip      = 'Originals were NOT deleted (the output is inside a source folder, or some items were skipped).'
-    del_ok        = 'Original item(s) deleted.'
-    del_fail      = 'Could not delete all originals: {0}'
-    del_partial   = 'Some originals could NOT be deleted ({0}); the rest were deleted:'
-    del_partial_hint = 'The encrypted copy is complete. Close whatever is using these files and delete them manually.'
-    elapsed       = 'Time: {0}'
-    success       = 'SUCCESS - All operations completed.'
-    lbl_hash      = 'Hashing   '
-    lbl_pack      = 'Packing   '
-    lbl_ver       = 'Verifying '
-    kdf           = 'Deriving key (PBKDF2)...'
-    compile       = 'The helper code could not be compiled (.NET Framework is required). Details:'
-    yn            = 'Y/N'
-    yes_chars     = 'y,yes'
-    no_chars      = 'n,no'
-    yn_invalid    = 'Please answer {0} or {1} (or press ENTER for the default).'
+$script:LangCode = 'en'
+
+# order: SE_LANG, the language chosen in the window (saved), the Windows display language, English
+function Get-LangCode {
+    $c = $env:SE_LANG
+    if (-not $c) {
+        try {
+            $rk = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\SecureEncrypt')
+            if ($rk -ne $null) { $c = [string]$rk.GetValue('Language'); $rk.Close() }
+        } catch { }
+    }
+    if (-not $c) { $c = [Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName }
+    $c = ([string]$c).ToLower()
+    if ($LangData.ContainsKey($c)) { return $c }
+    return 'en'
 }
 
-$M_TR = @{
-    press         = 'Çıkış için herhangi bir tuşa basın...'
-    use_hint1     = 'Kurulum yapmadan da kullanabilirsiniz.'
-    use_hint2     = 'Dosya veya klasörleri şifrelemek için bu betiğin üzerine sürükleyip bırakın (birden fazla olabilir).'
-    need_admin    = 'Kurulum için Yönetici ayrıcalıkları gerekiyor. İzin isteniyor...'
-    admin_denied  = 'Yönetici izni verilmedi.'
-    installed     = 'SecureEncrypt sistemde zaten kurulu.'
-    menu          = '  [1] Güncelle / yeniden kur|  [2] Kaldır|  [3] Çıkış'
-    choice        = 'Seçiminiz [1/2/3] (numarayı yazıp ENTER''a basın)'
-    not_installed = 'SecureEncrypt sistemde kurulu değil.'
-    q_install     = 'Kurmak istiyor musunuz'
-    installing    = 'Kuruluyor...'
-    install_ok    = 'Kurulum başarıyla tamamlandı.'
-    install_menu  = 'Sağ tık menüsü eklendi: dosya/klasörler için Şifrele, *_decrypt.cmd dosyaları için Şifreyi Çöz.'
-    uninstalling  = 'Kaldırılıyor...'
-    uninstall_ok  = 'Kaldırma işlemi başarıyla tamamlandı.'
-    cancelled     = 'İptal edildi.'
-    menu_encrypt  = 'Şifrele (Secure Encrypt AES-256)'
-    menu_dec      = 'Şifreyi Çöz (Secure Encrypt)'
-    warning       = '========================== UYARI =========================='
-    forbidden     = 'Bu konum bir sistem klasörüdür. Güvenlik nedeniyle burada şifreleme yapılamaz.'
-    notfound      = 'Yol bulunamadı: {0}'
-    items         = 'İşlenecek öğeler ({0}):'
-    more_items    = '  ... ve {0} öğe daha'
-    t_pw          = 'Parola (atlamak için ENTER)'
-    t_pw2         = 'Parolayı doğrulayın'
-    pw_strength   = 'Parola gücü: {0}'
-    strength0     = 'çok zayıf'
-    strength1     = 'zayıf'
-    strength2     = 'orta'
-    strength3     = 'iyi'
-    strength4     = 'güçlü'
-    pw_mismatch   = 'Parolalar eşleşmiyor. Tekrar deneyin.'
-    pw_weak       = 'Bu parola zayıf. Yine de kullanılsın mı?'
-    q_adv         = 'Gelişmiş seçenekler (anahtar dosyası, orijinalleri silme)'
-    t_kf          = 'Anahtar dosyası (yol yazın, dosyayı sürükleyin veya ? yazıp seçin; atlamak için ENTER)'
-    kf_missing    = 'Anahtar dosyası bulunamadı: {0}'
-    kf_pick_title = 'Anahtar dosyasını seçin'
-    kf_pick_fail  = 'Dosya seçme penceresi açılamadı (örneğin Server Core). Lütfen yolu yazın.'
-    late_added    = 'Seçilen {0} öğe daha eklendi - toplam {1}.'
-    late_skipped  = 'Atlandı (sistem klasörü): {0}'
-    kf_note       = 'NOT: Bu anahtar dosyasının içeriği değişirse veya dosya kaybolursa verinize bir daha ulaşılamaz. Yedeğini saklayın.'
-    no_enc        = 'Parola veya anahtar dosyası yok: veri ŞİFRELENMEYECEK (yalnızca sıkıştırılır ve gizlenir).'
-    enc_on        = 'Şifreleme: AES-256-CBC + HMAC-SHA256, anahtar PBKDF2-SHA256 ({0} yineleme) ile türetilir.'
-    dont_forget   = 'ÖNEMLİ: BU PAROLAYI / ANAHTAR DOSYASINI UNUTMAYIN. Onsuz verinin geri getirilmesi mümkün değildir.'
-    t_delete      = 'Şifrelemeden sonra orijinal öğelere ne yapılsın?|  [N] Kalsın (varsayılan)|  [D] Silinsin|  [S] Üzerine yazılıp silinsin'
-    t_delete_ask  = 'Seçiminiz [N/D/S] (ENTER = N)'
-    exists_q      = 'Çıktı dosyası zaten var: {0}  Üzerine yazılsın mı?'
-    section       = '================== ŞİFRELEME İŞLEMİ =================='
-    src_info      = 'Öğe sayısı: {0}    Toplam boyut: {1}'
-    src_sha       = 'SHA256    : {0}'
-    mode_label    = 'Mod       : {0}'
-    mode1         = 'sıkıştırılmış + gizlenmiş (ŞİFRELİ DEĞİL)'
-    mode2         = 'AES-256 ile şifreli'
-    comp_on       = 'GZip ile sıkıştırıldı'
-    comp_off      = 'sıkıştırılmadı (zaten sıkıştırılmış tür)'
-    skipped       = 'Atlandı (erişilemiyor / bağlantı): {0}'
-    out_info      = 'Çözücü dosya: {0}  ({1})'
-    verified      = 'Doğrulama başarılı (çıktı çözülüp karşılaştırıldı).'
-    changed       = 'İşlem sırasında bir kaynak dosya değişti. Lütfen tekrar deneyin.'
-    empty         = 'Şifrelenecek bir şey yok.'
-    err           = 'HATA: {0}'
-    del_skip      = 'Orijinaller SİLİNMEDİ (çıktı bir kaynak klasörün içinde ya da bazı öğeler atlandı).'
-    del_ok        = 'Orijinal öğe(ler) silindi.'
-    del_fail      = 'Orijinallerin tamamı silinemedi: {0}'
-    del_partial   = 'Bazı orijinaller SİLİNEMEDİ ({0}); geri kalanlar silindi:'
-    del_partial_hint = 'Şifreli kopya eksiksiz oluşturuldu. Bu dosyaları kullanan programı kapatıp elle silebilirsiniz.'
-    elapsed       = 'Süre: {0}'
-    success       = 'BAŞARILI - Tüm işlemler tamamlandı.'
-    lbl_hash      = 'Özet alınıyor'
-    lbl_pack      = 'Paketleniyor '
-    lbl_ver       = 'Doğrulanıyor '
-    kdf           = 'Anahtar türetiliyor (PBKDF2)...'
-    compile       = 'Yardımcı kod derlenemedi (.NET Framework gerekli). Ayrıntılar:'
-    yn            = 'E/H'
-    yes_chars     = 'e,evet,y'
-    no_chars      = 'h,hayır,hayir,n'
-    yn_invalid    = 'Lütfen {0} veya {1} yazın (varsayılan için ENTER).'
+function Set-Language([string]$code) {
+    if (-not $LangData.ContainsKey($code)) { return }
+    $script:LangCode = $code
+    try {
+        $rk = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\SecureEncrypt')
+        $rk.SetValue('Language', $code)
+        $rk.Close()
+    } catch { }
 }
 
 function T([string]$k) {
-    if ($IsTR) { return [regex]::Unescape($M_TR[$k]) }
-    return $M_EN[$k]
+    $v = $null
+    if ($LangData.ContainsKey($script:LangCode)) { $v = $LangData[$script:LangCode][$k] }
+    if ($v -eq $null) { $v = $LangData['en'][$k] }
+    if ($v -eq $null) { return $k }
+    return [regex]::Unescape($v)
+}
+
+# hands the texts and the language list to the window code (C#)
+function Push-GuiStrings {
+    foreach ($k in @($LangData['en'].Keys)) { [SE.UI.Ui]::Put($k, (T $k)) }
+    $codes = @($LangData.Keys | Sort-Object)
+    $names = @()
+    foreach ($c in $codes) {
+        $n = $LangData[$c]['lang_name']
+        if ($n -eq $null) { $n = $c }
+        $names += [regex]::Unescape($n)
+    }
+    [SE.UI.Ui]::SetLanguages([string[]]$codes, [string[]]$names, $script:LangCode)
 }
 
 # explicit parameters: `-f $args` misbehaves with 2+ values on PowerShell 2.0
@@ -182,7 +68,17 @@ $CompressedExt = @('.zip', '.7z', '.rar', '.gz', '.bz2', '.xz', '.cab', '.jpg', 
     '.mp3', '.aac', '.ogg', '.flac', '.mp4', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.docx', '.xlsx', '.pptx',
     '.odt', '.ods', '.odp', '.apk', '.jar', '.msi', '.iso', '.pdf')
 
+# A hidden (detached) run has no console to talk to: the text mode is shown in a new, visible console instead.
+function Restart-Visible([string[]]$items) {
+    $env:SE_GUI = '0'
+    $env:SE_DETACHED = ''
+    $q = ''
+    foreach ($x in $items) { if ($x) { $q += ' "' + $x + '"' } }
+    Start-Process -FilePath $env:ComSpec -ArgumentList ('/c ""' + $SelfPath + '"' + $q + '"')
+}
+
 function Wait-Key {
+    if ($env:SE_DETACHED -eq '1') { Restart-Visible $script:RunItems; exit 1 }
     Write-Host
     Write-Host (T 'press')
     try { [void][Console]::ReadKey($true) } catch { }
@@ -237,7 +133,9 @@ function Test-Forbidden([string]$full) {
 # The C# compiler (csc.exe) is started with an ANSI command line, so a %TEMP% path with characters outside the
 # system code page (e.g. a Chinese user name on an English Windows) breaks Add-Type. Only in that case the
 # compile uses an ASCII-only folder; %TEMP% is restored right afterwards (the right-click queue uses it).
-function Add-LibType {
+$script:LibLoaded = $false
+
+function Add-LibType([bool]$gui) {
     $oldTemp = $env:TEMP; $oldTmp = $env:TMP
     try {
         if ([IO.Path]::GetTempPath() -match '[^\x00-\x7F]') {
@@ -257,15 +155,19 @@ function Add-LibType {
                 } catch { }
             }
         }
-        Add-Type -TypeDefinition $LibSrc -Language CSharp
+        if ($gui) {
+            Add-Type -TypeDefinition ($LibSrc + "`r`n" + $GuiSrc) -Language CSharp -ReferencedAssemblies 'System.Windows.Forms.dll', 'System.Drawing.dll'
+        } else {
+            Add-Type -TypeDefinition $LibSrc -Language CSharp
+        }
     } finally {
         $env:TEMP = $oldTemp; $env:TMP = $oldTmp
     }
 }
 
-function Ensure-Lib {
+function Ensure-Lib([bool]$gui) {
     try {
-        Add-LibType
+        if (-not $script:LibLoaded) { Add-LibType $gui; $script:LibLoaded = $true }
     } catch {
         Write-Host (T 'compile') -ForegroundColor Red
         Write-Host $_.Exception.Message
@@ -276,6 +178,61 @@ function Ensure-Lib {
     [SE.Core]::LblEncode = (T 'lbl_pack')
     [SE.Core]::LblVerify = (T 'lbl_ver')
     [SE.Core]::LblKdf = (T 'kdf')
+    if ($gui -and $script:LibLoaded) {
+        [SE.UI.Ui]::CompressedExt = [string[]]$CompressedExt
+    }
+}
+
+# The window (GUI) mode needs Windows Forms, which Server Core does not have.
+function Test-GuiAvailable {
+    try {
+        if (-not [Environment]::UserInteractive) { return $false }
+        return ([Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') -ne $null)
+    } catch { return $false }
+}
+
+# text part of every *_decrypt.cmd: batch stub + the decoder program
+function Get-HeadText {
+    $decPs = $LangDecSrc + "`r`n" + '$LibSrc = @' + "'" + "`r`n" + $LibSrc + "`r`n" + "'@" + "`r`n" + '$GuiSrc = @' + "'" + "`r`n" + $GuiSrc + "`r`n" + "'@" + "`r`n" + $DecSrc
+    $head = $StubSrc + "`r`n" + '#PS_' + "BEGIN`r`n" + $decPs + "`r`n" + '#PS_' + "END`r`n"
+    if ($head -cmatch '[^\x00-\x7F]') { throw 'internal: non-ASCII header' }
+    return $head
+}
+
+function Invoke-EncryptGui([string[]]$paths, [bool]$late) {
+    Ensure-Lib $true
+    $head = Get-HeadText
+    $items = New-Object System.Collections.ArrayList
+    foreach ($p in $paths) {
+        $p = $p.Trim().Trim('"')
+        if ($p.Length -eq 0 -or -not (Test-Path -LiteralPath $p)) { continue }
+        [void]$items.Add([IO.Path]::GetFullPath($p))
+    }
+    # right-click fallback (queue method): the helper waited until nothing new arrived; merge what was queued since
+    if ($late) {
+        foreach ($lp in (Get-LateItems)) {
+            if ($lp -and (Test-Path -LiteralPath $lp)) {
+                $lf = [IO.Path]::GetFullPath($lp)
+                if ($items -notcontains $lf) { [void]$items.Add($lf) }
+            }
+        }
+        Remove-LeaderLock
+    }
+    $script:GuiItems = [string[]]$items.ToArray([string])
+    # choosing another language in the window closes it; it is shown again in that language with the same items
+    while ($true) {
+        Push-GuiStrings
+        $rc = [SE.UI.Ui]::Encrypt([string[]]$items.ToArray([string]), $head)
+        $req = [SE.UI.Ui]::LangRequest
+        if ($req) {
+            Set-Language $req
+            [SE.UI.Ui]::LangRequest = ''
+            $items = New-Object System.Collections.ArrayList
+            foreach ($k in [SE.UI.Ui]::KeptItems) { [void]$items.Add($k) }
+            continue
+        }
+        exit $rc
+    }
 }
 
 # ---------------------------------------------------------------- install / uninstall
@@ -309,8 +266,76 @@ function Test-WshEnabled {
     return (Test-Path -LiteralPath (Join-Path $env:SystemRoot 'System32\wscript.exe'))
 }
 
-function Do-Uninstall([string]$target) {
-    Write-Host
+# ---------------------------------------------------------------- Windows 11 context menu entry (optional, experimental)
+# The new Windows 11 context menu only lists entries of apps that have a package identity. This registers a small
+# UNSIGNED sparse package (Windows' test path, Add-AppxPackage -AllowUnsigned) whose COM server (compiled here from
+# the embedded source) provides the "SecureEncrypt" entry. Needs administrator rights; undone by Remove-ModernMenu.
+
+function Test-ModernMenuSupported {
+    try {
+        if ([Environment]::OSVersion.Version.Build -lt 22621) { return $false }
+        $c = Get-Command Add-AppxPackage -ErrorAction Stop
+        return [bool]$c.Parameters.ContainsKey('AllowUnsigned')
+    } catch { return $false }
+}
+
+function Test-ModernMenuInstalled {
+    try { return (@(Get-AppxPackage -Name 'AbdullahErturk.SecureEncrypt' -ErrorAction Stop).Count -gt 0) } catch { return $false }
+}
+
+function Remove-ModernMenu {
+    Get-Process -Name SecureEncryptShell -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Get-AppxPackage -Name 'AbdullahErturk.SecureEncrypt' -AllUsers -ErrorAction SilentlyContinue | ForEach-Object {
+        Remove-AppxPackage -Package $_.PackageFullName -AllUsers -ErrorAction SilentlyContinue
+    }
+    Remove-Item -LiteralPath (Join-Path $env:ProgramFiles 'SecureEncrypt') -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+function Add-ModernMenu {
+    $dir = Join-Path $env:ProgramFiles 'SecureEncrypt'
+    $work = Join-Path ([IO.Path]::GetTempPath()) ('SecureEncrypt_menu_' + [Guid]::NewGuid().ToString('N'))
+    [void][IO.Directory]::CreateDirectory($work)
+    try {
+        Remove-ModernMenu
+        [void][IO.Directory]::CreateDirectory($dir)
+        # the COM server
+        $srcFile = Join-Path $work 'shell_server.cs'
+        [IO.File]::WriteAllText($srcFile, $ShellSrc, [Text.Encoding]::ASCII)
+        $csc = Join-Path ([Runtime.InteropServices.RuntimeEnvironment]::GetRuntimeDirectory()) 'csc.exe'
+        $exe = Join-Path $dir 'SecureEncryptShell.exe'
+        # icon file (also the icon of the exe) and the package
+        Add-Type -TypeDefinition $PackSrc -Language CSharp -ReferencedAssemblies 'System.Drawing.dll'
+        $ico = Join-Path $dir 'SecureEncrypt.ico'
+        [ShellPack]::WriteIco($ico)
+        # application manifest: runs as the calling user, no elevation, Windows 7 - 11
+        $mf = Join-Path $work 'app.manifest'
+        $mfText = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' + "`r`n" +
+            '<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">' + "`r`n" +
+            '  <assemblyIdentity version="7.0.0.0" processorArchitecture="*" name="SecureEncrypt.ShellServer" type="win32" />' + "`r`n" +
+            '  <description>SecureEncrypt Windows 11 context menu handler</description>' + "`r`n" +
+            '  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3"><security><requestedPrivileges><requestedExecutionLevel level="asInvoker" uiAccess="false" /></requestedPrivileges></security></trustInfo>' + "`r`n" +
+            '  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1"><application>' + "`r`n" +
+            '    <supportedOS Id="{35138b9a-5d96-4fbd-8e2d-a2440225f93a}" />' + "`r`n" +
+            '    <supportedOS Id="{e2011457-1546-43c5-a5fe-008deee3d3f0}" />' + "`r`n" +
+            '    <supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}" />' + "`r`n" +
+            '    <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}" />' + "`r`n" +
+            '    <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />' + "`r`n" +
+            '  </application></compatibility>' + "`r`n" +
+            '</assembly>'
+        [IO.File]::WriteAllText($mf, $mfText, (New-Object Text.UTF8Encoding($false)))
+        $out = & $csc /nologo /target:winexe /optimize+ /out:"$exe" /win32icon:"$ico" /win32manifest:"$mf" "$srcFile"
+        if ($LASTEXITCODE -ne 0) { throw ('The menu server could not be compiled: ' + ($out -join ' ')) }
+        $msix = [ShellPack]::Build($work, $ManifestSrc)
+        # the entry names, in the current language
+        [IO.File]::WriteAllLines((Join-Path $dir 'labels.txt'), @((T 'menu_encrypt'), (T 'menu_dec'), (T 'menu_open')), (New-Object Text.UTF8Encoding($false)))
+        Add-AppxPackage -Path $msix -ExternalLocation $dir -AllowUnsigned -ErrorAction Stop
+        [ShellPack]::NotifyShell()
+    } finally {
+        Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Do-Uninstall([string]$target) {    Write-Host
     Write-Host (T 'uninstalling')
     $shim = Join-Path $env:SystemRoot 'SecureEncrypt.js'
     if (Test-Path -LiteralPath $shim) {
@@ -324,6 +349,8 @@ function Do-Uninstall([string]$target) {
     Remove-Key '*\shell\SecureEncrypt'
     Remove-Key 'Directory\shell\SecureEncrypt'
     Remove-Key 'cmdfile\shell\SecureEncryptDecrypt'
+    try { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree('Software\SecureEncrypt') } catch { }
+    if (Test-ModernMenuSupported) { try { Remove-ModernMenu } catch { } }
     Write-Host
     Write-Host (T 'uninstall_ok') -ForegroundColor Green
 }
@@ -354,12 +381,70 @@ function Do-Install([string]$target) {
     Set-Verb '*\shell\SecureEncrypt' (T 'menu_encrypt') $enc $null
     Set-Verb 'Directory\shell\SecureEncrypt' (T 'menu_encrypt') $enc $null
     Set-Verb 'cmdfile\shell\SecureEncryptDecrypt' (T 'menu_dec') 'cmd.exe /c ""%1""' 'System.FileName:"*_decrypt.cmd"'
+    if (Test-ModernMenuSupported) {
+        try { Add-ModernMenu } catch { Write-Host (TF 'err' $_.Exception.Message) -ForegroundColor Yellow }
+    }
     Write-Host
     Write-Host (T 'install_ok') -ForegroundColor Green
     Write-Host (T 'install_menu')
 }
 
-function Show-InstallMenu {
+# Install window. The window only asks; the work (registry, files) is done here and the window is shown
+# again with the result, because PowerShell 2.0 cannot run script code on the window's own thread.
+# Install / uninstall from the window. The window itself runs with normal rights; only this step needs an
+# administrator: it starts the same file elevated (UAC) with "/elevated install|uninstall" and waits for it.
+# Returns @(message, ok).
+function Invoke-SetupAction([string]$what, [string]$target) {
+    try {
+        if (Test-Admin) {
+            if ($what -eq 'install') { Do-Install $target }
+            else { Do-Uninstall $target }
+        } else {
+            $p = Start-Process -FilePath $SelfPath -ArgumentList @('/elevated', $what) -Verb RunAs -PassThru -Wait
+        }
+    } catch {
+        return @((T 'admin_denied'), $false)
+    }
+    $now = Test-Path -LiteralPath $target
+    if ($what -eq 'install' -and $now) {
+        # the entry of the new Windows 11 menu is part of the install; say so when it could not be added
+        if ((Test-ModernMenuSupported) -and -not (Test-ModernMenuInstalled)) { return @(((T 'install_ok') + ' ' + (T 'g_modern_skipped')), $true) }
+        return @((T 'install_ok'), $true)
+    }
+    if ($what -eq 'uninstall' -and -not $now) { return @((T 'uninstall_ok'), $true) }
+    return @((T 'g_setup_fail'), $false)
+}
+
+function Show-InstallGui {
+    Ensure-Lib $true
+    $target = Join-Path $env:SystemRoot 'SecureEncrypt.cmd'
+    $msg = ''
+    $ok = $true
+    while ($true) {
+        $installed = Test-Path -LiteralPath $target
+        Push-GuiStrings
+        $act = [SE.UI.Ui]::Setup($installed, $msg, $ok)
+        $req = [SE.UI.Ui]::LangRequest
+        if ($req) { Set-Language $req; [SE.UI.Ui]::LangRequest = ''; $msg = ''; continue }
+        if ($act -eq 1) {
+            $r = Invoke-SetupAction 'install' $target
+            $msg = $r[0]; $ok = $r[1]
+        } elseif ($act -eq 2) {
+            $r = Invoke-SetupAction 'uninstall' $target
+            $msg = $r[0]; $ok = $r[1]
+        } elseif ($act -eq 3) {
+            # use without installing: the encrypt window (this process keeps its normal rights, so drag and drop works)
+            Invoke-EncryptGui @() $false
+            break
+        } else {
+            break
+        }
+    }
+}
+
+function Show-InstallMenu([bool]$useGui) {
+    # the window runs with normal rights (it can also be used without installing); the text part below needs them from the start
+    if ($useGui) { Show-InstallGui; return }
     Show-Banner
     Write-Host (T 'use_hint1')
     Write-Host (T 'use_hint2')
@@ -491,6 +576,7 @@ function Invoke-Encrypt([string[]]$paths, [bool]$late) {
     Show-Banner
 
     $items = New-Object System.Collections.ArrayList
+    $refused = New-Object System.Collections.ArrayList
     foreach ($p in $paths) {
         $p = $p.Trim().Trim('"')
         if ($p.Length -eq 0) { continue }
@@ -501,20 +587,22 @@ function Invoke-Encrypt([string[]]$paths, [bool]$late) {
         }
         $full = [IO.Path]::GetFullPath($p)
         if ($full.Length -gt 3) { $full = $full.TrimEnd('\') }
-        if (Test-Forbidden $full) {
-            Write-Host (T 'warning')
-            Write-Host
-            Write-Host $full
-            Write-Host
-            Write-Host (T 'forbidden')
-            Wait-Key
-            exit 1
-        }
+        if (Test-Forbidden $full) { [void]$refused.Add($full); continue }
         if ($items -notcontains $full) { [void]$items.Add($full) }
+    }
+    # system locations are reported once, together; the rest of the selection is still processed
+    if ($refused.Count -gt 0) {
+        Write-Host (T 'warning')
+        Write-Host
+        foreach ($r in $refused) { Write-Host $r }
+        Write-Host
+        Write-Host (T 'forbidden')
+        if ($items.Count -eq 0) { Wait-Key; exit 1 }
+        Write-Host
     }
     if ($items.Count -eq 0) { Write-Host (T 'empty') -ForegroundColor Red; Wait-Key; exit 1 }
 
-    Ensure-Lib
+    Ensure-Lib $false
 
     Write-Host (TF 'items' $items.Count)
     $shown = 0
@@ -625,15 +713,15 @@ function Invoke-Encrypt([string[]]$paths, [bool]$late) {
     if (Test-Path -LiteralPath $part) { Remove-Item -LiteralPath $part -Force }
 
     # --- text part of the self extracting file
-    $decPs = '$LibSrc = @' + "'" + "`r`n" + $LibSrc + "`r`n" + "'@" + "`r`n" + $DecSrc
-    $head = $StubSrc + "`r`n" + '#PS_' + "BEGIN`r`n" + $decPs + "`r`n" + '#PS_' + "END`r`n"
-    if ($head -cmatch '[^\x00-\x7F]') { throw 'internal: non-ASCII header' }
+    $head = Get-HeadText
     [IO.File]::WriteAllText($part, $head, [Text.Encoding]::ASCII)
 
     $gzip = $true
     if ($items.Count -eq 1 -and (Test-Path -LiteralPath $first -PathType Leaf)) {
         if ($CompressedExt -contains [IO.Path]::GetExtension($first).ToLower()) { $gzip = $false }
     }
+    # very large data: the GZip component of older .NET versions cannot handle more than 4 GB
+    if ($gzip -and [SE.Core]::TotalSize([string[]]$items.ToArray([string]), [SE.Core]::GzipLimit) -ge [SE.Core]::GzipLimit) { $gzip = $false }
 
     Write-Host (T 'section')
     $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -669,8 +757,15 @@ function Invoke-Encrypt([string[]]$paths, [bool]$late) {
     if ($delMode -gt 0) { Write-Host (T 'verified') -ForegroundColor Green }
     $outSizeText = Fmt-Size ([SE.Core]::LastOutSize)
     Write-Host (TF 'out_info' $outCmd $outSizeText)
+    if ([SE.Core]::LastOutSize -ge 4294967296) { Write-Host (T 'big_warn') -ForegroundColor Yellow }
     $ts = $sw.Elapsed
-    if ($ts.TotalMinutes -ge 1) { $tt = ('{0} min {1:F0} s' -f [math]::Floor($ts.TotalMinutes), $ts.Seconds) } else { $tt = ('{0:F2} s' -f $ts.TotalSeconds) }
+    $uh = T 'unit_h'; $um = T 'unit_m'; $us = T 'unit_s'
+    if ($ts.TotalSeconds -lt 60) { $tt = ('{0:F2} {1}' -f $ts.TotalSeconds, $us) }
+    else {
+        $tot = [long][math]::Round($ts.TotalSeconds)
+        $hh = [math]::Floor($tot / 3600); $mm = [math]::Floor(($tot % 3600) / 60); $ss = $tot % 60
+        if ($hh -gt 0) { $tt = ('{0} {1} {2} {3} {4} {5}' -f $hh, $uh, $mm, $um, $ss, $us) } else { $tt = ('{0} {1} {2} {3}' -f $mm, $um, $ss, $us) }
+    }
     Write-Host (TF 'elapsed' $tt)
 
     # --- optionally remove the originals
@@ -710,12 +805,25 @@ function Invoke-Encrypt([string[]]$paths, [bool]$late) {
 # ---------------------------------------------------------------- entry point
 
 function Run-Main($argList) {
+    $script:LangCode = Get-LangCode
     $a = @($argList)
     $queue = $false
     $late = $false
-    while ($a.Count -gt 0 -and ($a[0] -eq '/q' -or $a[0] -eq '/late')) {
-        if ($a[0] -eq '/q') { $queue = $true } else { $late = $true }
+    # window mode is the default when there are items to encrypt; /console (or SE_GUI=0) forces the text mode,
+    # /gui opens the window even without items. The install menu and the right-click fallback queue stay text based.
+    $guiMode = 'auto'
+    if ($env:SE_GUI -eq '0') { $guiMode = 'off' } elseif ($env:SE_GUI -eq '1') { $guiMode = 'on' }
+    while ($a.Count -gt 0 -and ($a[0] -eq '/q' -or $a[0] -eq '/late' -or $a[0] -eq '/gui' -or $a[0] -eq '/console')) {
+        if ($a[0] -eq '/q') { $queue = $true } elseif ($a[0] -eq '/late') { $late = $true } elseif ($a[0] -eq '/gui') { $guiMode = 'on' } else { $guiMode = 'off' }
         if ($a.Count -gt 1) { $a = @($a[1..($a.Count - 1)]) } else { $a = @() }
+    }
+    # started by the window with elevated rights to install / uninstall (see Invoke-SetupAction)
+    if ($a.Count -ge 2 -and $a[0] -eq '/elevated') {
+        if (-not (Test-Admin)) { exit 1 }
+        $target = Join-Path $env:SystemRoot 'SecureEncrypt.cmd'
+        if ($a[1] -eq 'install') { Do-Install $target }
+        elseif ($a[1] -eq 'uninstall') { Do-Uninstall $target }
+        return
     }
     # the right-click helper passes the paths in a Unicode list file (file names may contain %VARIABLE% patterns)
     if ($a.Count -ge 2 -and $a[0] -eq '/list') {
@@ -725,8 +833,24 @@ function Run-Main($argList) {
         finally { try { Remove-Item -LiteralPath $listFile -Force } catch { } }
         $a = @($lines | Where-Object { $_.Trim().Length -gt 0 })
     }
-    if ($a.Count -eq 0) { Show-InstallMenu; return }
+    $script:RunItems = @($a)
+    # hidden run but no window possible (e.g. Server Core): continue in a visible console
+    if ($env:SE_DETACHED -eq '1' -and ($guiMode -eq 'off' -or -not (Test-GuiAvailable))) { Restart-Visible $a; return }
+    if ($a.Count -eq 0 -and $guiMode -ne 'on') { Show-InstallMenu ($guiMode -ne 'off' -and (Test-GuiAvailable)); return }
     if ($queue) { $a = @(Wait-Queue $a[0]) }
+    if ($guiMode -ne 'off' -and (Test-GuiAvailable)) {
+        try {
+            Invoke-EncryptGui ([string[]]$a) $late
+            return
+        } catch {
+            # the window could not be shown: say why and continue in the text mode with the same items
+            if ($env:SE_DETACHED -eq '1') { if ($script:GuiItems) { Restart-Visible $script:GuiItems } else { Restart-Visible $a }; return }
+            try { [SE.UI.Ui]::ShowOwnConsole() } catch { }
+            Write-Host (TF 'err' $_.Exception.Message) -ForegroundColor Yellow
+            Write-Host
+            if ($script:GuiItems) { $a = @($script:GuiItems); $late = $false }
+        }
+    }
     try {
         Invoke-Encrypt ([string[]]$a) $late
     } finally {
@@ -737,6 +861,8 @@ function Run-Main($argList) {
 try {
     Run-Main $args
 } catch {
+    if ($env:SE_DETACHED -eq '1') { Restart-Visible $script:RunItems; exit 1 }
+    try { [SE.UI.Ui]::ShowOwnConsole() } catch { }
     Write-Host
     Write-Host (TF 'err' $_.Exception.Message) -ForegroundColor Red
     Wait-Key

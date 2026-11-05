@@ -24,16 +24,27 @@ namespace SE
         }
     }
 
+    // Hooks used by the window (GUI) mode; with no hook set everything goes to the console.
+    public delegate void ProgressHandler(string label, int percent);
+    public delegate void StatusHandler(string text);
+    public delegate int ConflictHandler(string target);
+
     public class ProgressBar
     {
         public static string Label = "";
+        public static ProgressHandler Sink;
+        public static volatile bool CancelRequested;
         private long total;
         private long done;
         private int last = -1;
 
         public ProgressBar(long total) { this.total = total; Draw(); }
 
-        public void Add(long n) { done += n; Draw(); }
+        public void Add(long n)
+        {
+            if (CancelRequested) throw new OperationCanceledException();
+            done += n; Draw();
+        }
 
         private void Draw()
         {
@@ -41,11 +52,12 @@ namespace SE
             if (pct > 100) pct = 100;
             if (pct == last) return;
             last = pct;
+            if (Sink != null) { Sink(Label, pct); return; }
             int bar = pct * 30 / 100;
             Console.Write("\r" + Label + " [" + new string('=', bar) + new string(' ', 30 - bar) + "] " + pct + "%  ");
         }
 
-        public void Finish() { done = total; Draw(); Console.WriteLine(); }
+        public void Finish() { done = total; Draw(); if (Sink == null) Console.WriteLine(); }
     }
 
     // ---- small stream helpers (no Stream.CopyTo etc., CLR 2.0 compatible) ----
@@ -174,11 +186,56 @@ namespace SE
         public static string LblKdf = "Deriving key...";
         public static string ConflictPrompt = "Already exists: {0}  [O]verwrite all / [R]ename / [S]kip all / [C]ancel:";
         public static int ConflictMode = 0; // 0 ask, 1 overwrite, 2 rename, 3 skip
+        public static StatusHandler StatusSink;
+        public static ConflictHandler ConflictSink;
 
         // results of the last Encode call
         public static string LastSha = "";
         public static long LastCount;
         public static long LastTotal;
+
+        // The GZip component of .NET 2.0 / 3.5 (Windows 7 default) fails above 4 GB of data: above this size the data is
+        // stored without compression instead (the encryption itself has no such limit).
+        public const long GzipLimit = 3758096384L;     // 3.5 GiB
+
+        // total size of the files in the given files and folders (unreadable parts are skipped); stops counting at the limit
+        public static long TotalSize(string[] items, long stopAt)
+        {
+            long sum = 0;
+            for (int i = 0; i < items.Length; i++)
+            {
+                try
+                {
+                    if (File.Exists(items[i])) sum += new FileInfo(items[i]).Length;
+                    else if (Directory.Exists(items[i])) sum += DirSize(items[i], stopAt - sum);
+                }
+                catch { }
+                if (sum >= stopAt) return sum;
+            }
+            return sum;
+        }
+
+        private static long DirSize(string dir, long stopAt)
+        {
+            long sum = 0;
+            try
+            {
+                string[] files = Directory.GetFiles(dir);
+                for (int i = 0; i < files.Length; i++)
+                {
+                    try { sum += new FileInfo(files[i]).Length; } catch { }
+                    if (sum >= stopAt) return sum;
+                }
+                string[] subs = Directory.GetDirectories(dir);
+                for (int i = 0; i < subs.Length; i++)
+                {
+                    sum += DirSize(subs[i], stopAt - sum);
+                    if (sum >= stopAt) return sum;
+                }
+            }
+            catch { }
+            return sum;
+        }
         public static long LastOutSize;
         public static long LastDataStart;
         public static List<string> Skipped = new List<string>();
@@ -347,7 +404,7 @@ namespace SE
 
         internal static void DeriveKeys(byte[] secret, byte[] salt, int iter, out byte[] encKey, out byte[] macKey, out byte[] keyCheck)
         {
-            Console.WriteLine(LblKdf);
+            if (StatusSink != null) StatusSink(LblKdf); else Console.WriteLine(LblKdf);
             byte[] master = Pbkdf2(secret, salt, iter);
             encKey = Hmac(master, "SE2-ENC");
             macKey = Hmac(master, "SE2-MAC");
@@ -682,6 +739,11 @@ namespace SE
 
         private static int Conflict(string target)
         {
+            if (ConflictMode == 0 && ConflictSink != null)
+            {
+                ConflictMode = ConflictSink(target);
+                if (ConflictMode < 1 || ConflictMode > 3) throw new OperationCanceledException();
+            }
             if (ConflictMode == 0)
             {
                 Console.WriteLine();

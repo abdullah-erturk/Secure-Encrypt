@@ -1,83 +1,75 @@
 $ErrorActionPreference = 'Stop'
 $Self = $env:SE_SELF
-$IsTR = ([Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName -eq 'tr')
-if ($env:SE_LANG) { $IsTR = ($env:SE_LANG -eq 'tr') }
+# Started hidden and detached by the stub: the extracted copy of this script removes itself (it is read completely by now).
+if ($env:SE_DETACHED -eq '1') { try { Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue } catch { } }
+# ---------------------------------------------------------------- texts
+# The texts live in src\lang\*.ini; build.ps1 embeds them as $LangData (language code -> key -> text).
+# Keys that a language lacks fall back to English. The same block is in engine.ps1 and dec.ps1.
 
-$M_EN = @{
-    press      = 'Press any key to exit...'
-    compile    = 'The helper code could not be compiled (.NET Framework is required). Details:'
-    format     = 'ERROR: Unsupported or damaged file.'
-    header     = '================== DECRYPT PROCESS =================='
-    file       = 'File       : {0}'
-    enc_aes    = 'Protection : AES-256 encrypted'
-    enc_none   = 'Protection : none (compressed + obfuscated only)'
-    needs      = 'Requires   : {0}'
-    n_pw       = 'password'
-    n_kf       = 'key file'
-    n_both     = 'password + key file'
-    t_pw       = 'Password'
-    t_kf       = 'Key file (path, drag the file here, or ? to browse)'
-    kf_missing = 'Key file not found: {0}'
-    kf_pick_title = 'Select the key file'
-    kf_pick_fail  = 'The file dialog could not be opened (for example on Server Core). Please type the path instead.'
-    wrong      = 'Wrong password or key file ({0}/{1}).'
-    conflict   = 'Already exists: {0}|  [O] Overwrite all|  [R] Rename (keep both)|  [S] Skip all|  [C] Cancel|Your choice [O/R/S/C]:'
-    lbl_ver    = 'Verifying '
-    lbl_ext    = 'Extracting'
-    kdf        = 'Deriving key (PBKDF2): verifying password and key file.'
-    mac_fail   = 'ERROR: Integrity check FAILED. The file is corrupted or has been modified. Nothing was extracted.'
-    cancelled  = 'Cancelled.'
-    err        = 'ERROR: {0}'
-    done       = 'Done. {0} item(s) extracted to: {1}'
-    sha        = 'Calculated SHA256: {0}'
-    sha_ok     = 'SHA256: SUCCESS'
-    sha_fail   = 'SHA256: FAILED (the data does not match the original)'
-    footer     = '================== DECRYPT PROCESS =================='
+$script:LangCode = 'en'
+
+# order: SE_LANG, the language chosen in the window (saved), the Windows display language, English
+function Get-LangCode {
+    $c = $env:SE_LANG
+    if (-not $c) {
+        try {
+            $rk = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\SecureEncrypt')
+            if ($rk -ne $null) { $c = [string]$rk.GetValue('Language'); $rk.Close() }
+        } catch { }
+    }
+    if (-not $c) { $c = [Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName }
+    $c = ([string]$c).ToLower()
+    if ($LangData.ContainsKey($c)) { return $c }
+    return 'en'
 }
 
-$M_TR = @{
-    press      = 'Çıkış için herhangi bir tuşa basın...'
-    compile    = 'Yardımcı kod derlenemedi (.NET Framework gerekli). Ayrıntılar:'
-    format     = 'HATA: Desteklenmeyen veya bozuk dosya.'
-    header     = '================== ŞİFRE ÇÖZME İŞLEMİ =================='
-    file       = 'Dosya      : {0}'
-    enc_aes    = 'Koruma     : AES-256 ile şifreli'
-    enc_none   = 'Koruma     : yok (yalnızca sıkıştırılmış + gizlenmiş)'
-    needs      = 'Gereken    : {0}'
-    n_pw       = 'parola'
-    n_kf       = 'anahtar dosyası'
-    n_both     = 'parola + anahtar dosyası'
-    t_pw       = 'Parola'
-    t_kf       = 'Anahtar dosyası (yol yazın, dosyayı sürükleyin veya ? yazıp seçin)'
-    kf_missing = 'Anahtar dosyası bulunamadı: {0}'
-    kf_pick_title = 'Anahtar dosyasını seçin'
-    kf_pick_fail  = 'Dosya seçme penceresi açılamadı (örneğin Server Core). Lütfen yolu yazın.'
-    wrong      = 'Parola veya anahtar dosyası yanlış ({0}/{1}).'
-    conflict   = 'Zaten var: {0}|  [O] Hepsinin üzerine yaz|  [R] Yeniden adlandır (ikisini de tut)|  [S] Hepsini atla|  [C] İptal|Seçiminiz [O/R/S/C]:'
-    lbl_ver    = 'Doğrulanıyor'
-    lbl_ext    = 'Çıkarılıyor '
-    kdf        = 'Anahtar türetiliyor (PBKDF2): Parola ve anahtar dosyası doğrulanıyor.'
-    mac_fail   = 'HATA: Bütünlük denetimi BAŞARISIZ. Dosya bozulmuş veya değiştirilmiş. Hiçbir şey çıkarılmadı.'
-    cancelled  = 'İptal edildi.'
-    err        = 'HATA: {0}'
-    done       = 'Tamamlandı. {0} öğe şuraya çıkarıldı: {1}'
-    sha        = 'Hesaplanan SHA256: {0}'
-    sha_ok     = 'SHA256: BAŞARILI'
-    sha_fail   = 'SHA256: BAŞARISIZ (veri orijinaliyle eşleşmiyor)'
-    footer     = '================== ŞİFRE ÇÖZME İŞLEMİ =================='
+function Set-Language([string]$code) {
+    if (-not $LangData.ContainsKey($code)) { return }
+    $script:LangCode = $code
+    try {
+        $rk = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\SecureEncrypt')
+        $rk.SetValue('Language', $code)
+        $rk.Close()
+    } catch { }
 }
 
 function T([string]$k) {
-    if ($IsTR) { return [regex]::Unescape($M_TR[$k]) }
-    return $M_EN[$k]
+    $v = $null
+    if ($LangData.ContainsKey($script:LangCode)) { $v = $LangData[$script:LangCode][$k] }
+    if ($v -eq $null) { $v = $LangData['en'][$k] }
+    if ($v -eq $null) { return $k }
+    return [regex]::Unescape($v)
 }
+
+# hands the texts and the language list to the window code (C#)
+function Push-GuiStrings {
+    foreach ($k in @($LangData['en'].Keys)) { [SE.UI.Ui]::Put($k, (T $k)) }
+    $codes = @($LangData.Keys | Sort-Object)
+    $names = @()
+    foreach ($c in $codes) {
+        $n = $LangData[$c]['lang_name']
+        if ($n -eq $null) { $n = $c }
+        $names += [regex]::Unescape($n)
+    }
+    [SE.UI.Ui]::SetLanguages([string[]]$codes, [string[]]$names, $script:LangCode)
+}
+
+$script:LangCode = Get-LangCode
 
 # explicit parameters: `-f $args` misbehaves with 2+ values on PowerShell 2.0
 function TF([string]$k, $a0, $a1) {
     return [string]::Format((T $k), $a0, $a1)
 }
 
+# A hidden (detached) run has no console to talk to: the text mode is shown in a new, visible console instead.
+function Restart-Visible {
+    $env:SE_GUI = '0'
+    $env:SE_DETACHED = ''
+    Start-Process -FilePath $env:ComSpec -ArgumentList ('/c ""' + $Self + '""')
+}
+
 function Wait-Key {
+    if ($env:SE_DETACHED -eq '1') { Restart-Visible; exit 1 }
     Write-Host
     Write-Host (T 'press')
     try { [void][Console]::ReadKey($true) } catch { }
@@ -130,7 +122,7 @@ Write-Host
 
 # csc.exe gets an ANSI command line: a %TEMP% path with characters outside the system code page breaks Add-Type.
 # Only in that case the compile uses an ASCII-only folder; %TEMP% is restored right afterwards.
-function Add-LibType {
+function Add-LibType([bool]$gui) {
     $oldTemp = $env:TEMP; $oldTmp = $env:TMP
     try {
         if ([IO.Path]::GetTempPath() -match '[^\x00-\x7F]') {
@@ -150,14 +142,28 @@ function Add-LibType {
                 } catch { }
             }
         }
-        Add-Type -TypeDefinition $LibSrc -Language CSharp
+        if ($gui) {
+            Add-Type -TypeDefinition ($LibSrc + "`r`n" + $GuiSrc) -Language CSharp -ReferencedAssemblies 'System.Windows.Forms.dll', 'System.Drawing.dll'
+        } else {
+            Add-Type -TypeDefinition $LibSrc -Language CSharp
+        }
     } finally {
         $env:TEMP = $oldTemp; $env:TMP = $oldTmp
     }
 }
 
+# window (GUI) mode is the default; SE_GUI=0 forces the text mode. It needs Windows Forms (not on Server Core).
+$useGui = ($env:SE_GUI -ne '0')
+if ($useGui) {
+    try {
+        if (-not [Environment]::UserInteractive -or [Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') -eq $null) { $useGui = $false }
+    } catch { $useGui = $false }
+}
+# hidden run but no window possible (e.g. Server Core): continue in a visible console
+if (-not $useGui -and $env:SE_DETACHED -eq '1') { Restart-Visible; exit 1 }
+
 try {
-    Add-LibType
+    Add-LibType $useGui
 } catch {
     Write-Host (T 'compile') -ForegroundColor Red
     Write-Host $_.Exception.Message
@@ -181,6 +187,16 @@ try {
     $e = $txt.IndexOf('#PS_' + 'END' + "`r`n")
     if ($e -lt 0) { throw 'FORMAT' }
     $dataStart = [long]($e + 9)
+
+    if ($useGui) {
+        while ($true) {
+            Push-GuiStrings
+            $rc = [SE.UI.Ui]::Decrypt($Self, $dataStart)
+            $req = [SE.UI.Ui]::LangRequest
+            if ($req) { Set-Language $req; [SE.UI.Ui]::LangRequest = ''; continue }
+            exit $rc
+        }
+    }
 
     $arc = [SE.Archive]::Open($Self, $dataStart)
 
@@ -232,8 +248,10 @@ try {
     Write-Host
 
 
+    $sw = [Diagnostics.Stopwatch]::StartNew()
     try { $arc.Extract($dest) }
     finally {
+        $sw.Stop()
         $arc.Clear()
         if ($secret -ne $null) { [Array]::Clear($secret, 0, $secret.Length) }
     }
@@ -245,10 +263,13 @@ try {
     $cnt = [string]$arc.Count
     $fullDest = [IO.Path]::GetFullPath($dest)
     Write-Host (TF 'done' $cnt $fullDest)
+    Write-Host (TF 'elapsed' ([SE.UI.Ui]::FmtDuration($sw.Elapsed.TotalSeconds)))
     Write-Host (T 'footer')
     Wait-Key
     if ($arc.ShaOk) { exit 0 } else { exit 1 }
 } catch {
+    if ($env:SE_DETACHED -eq '1') { Restart-Visible; exit 1 }
+    try { [SE.UI.Ui]::ShowOwnConsole() } catch { }
     $ex = $_.Exception
     if ($ex.InnerException -ne $null) { $ex = $ex.InnerException }
     Write-Host
