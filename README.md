@@ -164,28 +164,32 @@ Windows'taki biçimle (`SEv2`) birebir uyumludur: sayfada şifrelenen dosya Wind
 * Windows'ta `*_decrypt.cmd` dosyası bir betik olduğu için bazı antivirüs programları (Windows Defender dahil), nadiren makine öğrenmesine dayalı yanlış pozitif verebilir. Kaynak kodun tamamı açıktır.
 * Sayfa `src\build.ps1` ile `src\web\template.html` şablonundan üretilir (Windows çözücüsü sayfaya gömülür); elle düzenlemeyin.
 
-## 🔄 v5 → v6: Neler Değişti? (ayrıntılar için [CHANGELOG.md](CHANGELOG.md) dosyasına bakınız)
+## 🔄 v5 → v6 → v7: Neler Değişti? (ayrıntılar için [CHANGELOG.md](CHANGELOG.md) dosyasına bakınız)
 
-v6, v5'in baştan yazılmış hâlidir.
+v6, v5'in baştan yazılmış hâlidir. v7, v6'nın üzerine yeni pencere arayüzü, tarayıcı sürümü ve Windows 11 menüsünü ekler; dosya biçimi (`SEv2`) aynıdır.
 
-| Konu | v5 | v6 |
-| :--- | :--- | :--- |
-| Anahtar türetme | PBKDF2 (SHA-1), 10.000 yineleme | **PBKDF2-HMAC-SHA256, 600.000 yineleme** |
-| Bütünlük | Yok (yalnızca AES-CBC) | **HMAC-SHA256** (değişen/bozuk dosya yazmadan reddedilir) |
-| Parola | PowerShell komutunun içine yazılıyordu | `SecureString`, komut satırında geçmez; özel karakterler çalışır |
-| Orijinal SHA256 | `_decrypt.cmd` içinde düz yazı | Şifreli verinin içinde |
-| Anahtar dosyası, parola gücü, 3 deneme | Yok | **Var** |
-| Seçim | Tek dosya veya klasör | **Çoklu dosya/klasör**, tek `_decrypt.cmd` |
-| Klasörler | ZIP (Shell.Application / VBS) | Kendi kapsayıcı biçimi (Win7'de de aynı) |
-| Sağ tık | "Dosyayı / Klasörü Şifrele" ayrı girdileri | Tek nötr *Şifrele* + *Şifreyi Çöz*; çoklu seçimde **tek pencere** |
-| Sorular | Çok adımlı | Çıktı klasörü sorulmaz; gelişmiş seçenekler tek `[e/H]` sorusunda |
-| Orijinalleri silme | Yok | Çözüp karşılaştırarak doğrular, sonra siler |
-| Sıkıştırma | Yok | Otomatik GZip |
-| Dil | Ayrı TR ve EN betikleri | **Tek betik**, Windows diline göre otomatik |
-| Unicode | – | Dosya adı/parola her dilde, kod sayfasından bağımsız |
-| 3. parti uygulama | Gerekmez | Gerekmez (yerleşik Windows bileşenleri) |
-| Windows 7 | – | PowerShell 2.0 / .NET 2.0 uyumlu, denenmiştir |
-| İmza | Elle güncellenir, özet panoya kopyalanırdı | `src\build.ps1` ile otomatik hesaplanır |
+| Konu | v5 | v6 | v7 |
+| :--- | :--- | :--- | :--- |
+| Arayüz | Konsol | Konsol | **Pencere** (yatay, iki sütunlu) ve **Şifrele / Şifreyi çöz sekmeleri**; konsol yedek olarak durur |
+| Tarayıcı sürümü | Yok | Yok | **`web\index.html`**: her cihazda şifreleme ve çözme (yaklaşık 1,5 GB sınırı) |
+| Anahtar türetme | PBKDF2 (SHA-1), 10.000 yineleme | **PBKDF2-HMAC-SHA256, 600.000 yineleme** | Aynı |
+| Bütünlük | Yok (yalnızca AES-CBC) | **HMAC-SHA256** (değişen/bozuk dosya yazmadan reddedilir) | Aynı |
+| Parola | PowerShell komutunun içine yazılıyordu | `SecureString`, komut satırında geçmez; özel karakterler çalışır | Aynı |
+| Orijinal SHA256 | `_decrypt.cmd` içinde düz yazı | Şifreli verinin içinde | Aynı |
+| Anahtar dosyası, parola gücü, 3 deneme | Yok | **Var** | Aynı |
+| Seçim | Tek dosya veya klasör | **Çoklu dosya/klasör**, tek `_decrypt.cmd` | Aynı |
+| Klasörler | ZIP (Shell.Application / VBS) | Kendi kapsayıcı biçimi (Win7'de de aynı) | Aynı |
+| Sağ tık | "Dosyayı / Klasörü Şifrele" ayrı girdileri | Tek nötr *Şifrele* + *Şifreyi Çöz*; çoklu seçimde **tek pencere** | Aynı + **Windows 11 yeni menüsü** ve "arayüzü aç" girdisi |
+| Sorular | Çok adımlı | Çıktı klasörü sorulmaz; gelişmiş seçenekler tek `[e/H]` sorusunda | Aynı |
+| Orijinalleri silme | Yok | Çözüp karşılaştırarak doğrular, sonra siler | Aynı |
+| Sıkıştırma | Yok | Otomatik GZip | Aynı (3,5 GB üstünde kapanır) |
+| Büyük dosyalar | – | 4 GB üstü `_decrypt.cmd` sorunluydu | Başlatıcı düzeltildi, uyarı gösterilir (4 GB üstü dosya çift tıklamayla açılmaz) |
+| Süre | Yok | Yok | Sonuçta **geçen süre** |
+| Dil | Ayrı TR ve EN betikleri | **Tek betik**, Windows diline göre otomatik | Aynı; metinler `src\lang\*.ini` dosyalarında (yeni dil eklemek kolay) |
+| Unicode | – | Dosya adı/parola her dilde, kod sayfasından bağımsız | Aynı |
+| 3. parti uygulama | Gerekmez | Gerekmez (yerleşik Windows bileşenleri) | Aynı |
+| Windows 7 | – | PowerShell 2.0 / .NET 2.0 uyumlu, denenmiştir | Aynı |
+| İmza | Elle güncellenir, özet panoya kopyalanırdı | `src\build.ps1` ile otomatik hesaplanır | Aynı |
 
 **Uyumluluk:** v6 ve v7 dosya biçimi (`SEv2`) v5'inkiyle uyumlu değildir. v5 ile oluşturulmuş `_decrypt.cmd` dosyaları kendi çözücülerini içerdiği için çalışmaya devam etmesi beklenir. v6 ile v7 arasında uyumluluk sorunu yoktur: biçim aynıdır, v6 ile oluşturulmuş dosyalar v7'de de açılır.
 
@@ -339,28 +343,32 @@ It is fully compatible with the Windows format (`SEv2`): a file encrypted in the
 * A `*_decrypt.cmd` file is a script on Windows, so some antivirus programs (including Windows Defender) may rarely report a machine-learning based false positive. The whole source code is open.
 * The page is generated from `src\web\template.html` by `src\build.ps1` (the Windows decryptor is embedded in it); do not edit it by hand.
 
-## 🔄 v5 → v6: What Changed? (see the [CHANGELOG.md](CHANGELOG.md) file for details)
+## 🔄 v5 → v6 → v7: What Changed? (see the [CHANGELOG.md](CHANGELOG.md) file for details)
 
-v6 is a rewrite of v5.
+v6 is a rewrite of v5. v7 adds a new window interface, a browser version and a Windows 11 menu on top of v6; the file format (`SEv2`) is the same.
 
-| Topic | v5 | v6 |
-| :--- | :--- | :--- |
-| Key derivation | PBKDF2 (SHA-1), 10,000 iterations | **PBKDF2-HMAC-SHA256, 600,000 iterations** |
-| Integrity | None (plain AES-CBC) | **HMAC-SHA256** (modified/corrupted file rejected before writing) |
-| Password | Written inside the PowerShell command | `SecureString`, never on a command line; special characters work |
-| Original SHA256 | Clear text in `_decrypt.cmd` | Inside the encrypted data |
-| Key file, strength meter, 3 attempts | No | **Yes** |
-| Selection | One file or folder | **Multiple files/folders** in one `_decrypt.cmd` |
-| Folders | ZIP (Shell.Application / VBS) | Own container format (same on Win7) |
-| Right-click | Separate "Encrypt File / Folder" entries | One neutral *Encrypt* + *Decrypt*; multi-selection in **one window** |
-| Questions | Many steps | No output-folder question; advanced options behind one `[y/N]` question |
-| Delete originals | No | Verifies by decrypting and comparing, then deletes |
-| Compression | No | Automatic GZip |
-| Language | Separate TR and EN scripts | **One script**, automatic by Windows language |
-| Unicode | – | Names/password in any language, independent of the code page |
-| Third-party software | Not needed | Not needed (built-in Windows components) |
-| Windows 7 | – | PowerShell 2.0 / .NET 2.0 compatible, tested |
-| Signature | Updated by hand, hash copied to the clipboard | Computed automatically by `src\build.ps1` |
+| Topic | v5 | v6 | v7 |
+| :--- | :--- | :--- | :--- |
+| Interface | Console | Console | **Window** (landscape, two columns) with **Encrypt / Decrypt tabs**; the console stays as a fallback |
+| Browser version | No | No | **`web\index.html`**: encrypt and decrypt on any device (about 1.5 GB limit) |
+| Key derivation | PBKDF2 (SHA-1), 10,000 iterations | **PBKDF2-HMAC-SHA256, 600,000 iterations** | Same |
+| Integrity | None (plain AES-CBC) | **HMAC-SHA256** (modified/corrupted file rejected before writing) | Same |
+| Password | Written inside the PowerShell command | `SecureString`, never on a command line; special characters work | Same |
+| Original SHA256 | Clear text in `_decrypt.cmd` | Inside the encrypted data | Same |
+| Key file, strength meter, 3 attempts | No | **Yes** | Same |
+| Selection | One file or folder | **Multiple files/folders** in one `_decrypt.cmd` | Same |
+| Folders | ZIP (Shell.Application / VBS) | Own container format (same on Win7) | Same |
+| Right-click | Separate "Encrypt File / Folder" entries | One neutral *Encrypt* + *Decrypt*; multi-selection in **one window** | Same + **Windows 11 modern menu** and an "open window" entry |
+| Questions | Many steps | No output-folder question; advanced options behind one `[y/N]` question | Same |
+| Delete originals | No | Verifies by decrypting and comparing, then deletes | Same |
+| Compression | No | Automatic GZip | Same (switched off above 3.5 GB) |
+| Large files | – | `_decrypt.cmd` files over 4 GB were problematic | Launcher fixed, a warning is shown (files over 4 GB cannot be opened by double-click) |
+| Elapsed time | No | No | **Time taken** shown in the result |
+| Language | Separate TR and EN scripts | **One script**, automatic by Windows language | Same; texts live in `src\lang\*.ini` (adding a language is easy) |
+| Unicode | – | Names/password in any language, independent of the code page | Same |
+| Third-party software | Not needed | Not needed (built-in Windows components) | Same |
+| Windows 7 | – | PowerShell 2.0 / .NET 2.0 compatible, tested | Same |
+| Signature | Updated by hand, hash copied to the clipboard | Computed automatically by `src\build.ps1` | Same |
 
 **Compatibility:** the v6 and v7 file format (`SEv2`) is not compatible with v5's. `_decrypt.cmd` files created with v5 carry their own decryptor, so they are expected to keep working. There is no compatibility problem between v6 and v7: the format is the same, and files created with v6 open in v7 too.
 
