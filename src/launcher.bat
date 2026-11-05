@@ -55,6 +55,21 @@ if not exist "%SE_PS%" (
     pause
     exit /b 1
 )
+:: Window mode: PowerShell is started hidden and detached and this console window closes at once. (On Windows 11 the
+:: console is a Windows Terminal window; it would stay open behind the program's own window.)
+:: The text mode (SE_GUI=0, /console, /q, /elevated) keeps the console and waits for the program.
+set "SE_DETACH=1"
+if "%SE_GUI%"=="0" set "SE_DETACH="
+for %%A in (%*) do (
+    if /i "%%~A"=="/console" set "SE_DETACH="
+    if /i "%%~A"=="/q" set "SE_DETACH="
+    if /i "%%~A"=="/elevated" set "SE_DETACH="
+)
+if defined SE_DETACH (
+    set "SE_DETACHED=1"
+    start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%SE_PS%" %*
+    exit /b 0
+)
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SE_PS%" %*
 set "SE_RC=%ERRORLEVEL%"
 del /f /q "%SE_PS%" >nul 2>&1

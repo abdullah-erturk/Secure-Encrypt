@@ -7,9 +7,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$f=[IO.File]::OpenRead($
 if not exist "%SE_PS%" (
     echo ERROR: Could not extract the decoder. Windows PowerShell is required.
     pause
-    exit /b 1
+    (goto) 2>nul & cmd /d /c exit 1
+)
+:: NOTE: every exit below is "(goto) 2>nul & cmd /d /c exit N" and not "exit /b N": for a file larger than 4 GB cmd.exe
+:: otherwise goes on reading the file at a wrong offset after "exit /b" and runs the binary data as commands.
+:: Window mode: the decoder runs hidden and detached and this console window closes at once (SE_GUI=0 keeps the text mode).
+set "SE_DETACH=1"
+if "%SE_GUI%"=="0" set "SE_DETACH="
+if defined SE_DETACH (
+    set "SE_DETACHED=1"
+    start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%SE_PS%"
+    (goto) 2>nul & cmd /d /c exit 0
 )
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SE_PS%"
 set "SE_RC=%ERRORLEVEL%"
 del /f /q "%SE_PS%" >nul 2>&1
-exit /b %SE_RC%
+(goto) 2>nul & cmd /d /c exit %SE_RC%
