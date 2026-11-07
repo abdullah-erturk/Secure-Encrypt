@@ -195,6 +195,10 @@ v6, v5'in baştan yazılmış hâlidir. v7, v6'nın üzerine yeni pencere arayü
 
 **Bilinen sınır:** Windows, klasik sağ tık komutlarını **15'ten fazla öğe** seçildiğinde göstermez. Daha fazlası için dosyaları `SecureEncrypt.cmd` üzerine sürükleyip bırakın.
 
+## 📄 Lisans
+
+Bu proje [MIT lisansı](LICENSE) ile yayınlanmıştır: ücretsiz kullanabilir, değiştirebilir ve dağıtabilirsiniz; tek şart telif hakkı ve lisans notunun korunmasıdır.
+
 </details>
 
 ---
@@ -373,6 +377,10 @@ v6 is a rewrite of v5. v7 adds a new window interface, a browser version and a W
 **Compatibility:** the v6 and v7 file format (`SEv2`) is not compatible with v5's. `_decrypt.cmd` files created with v5 carry their own decryptor, so they are expected to keep working. There is no compatibility problem between v6 and v7: the format is the same, and files created with v6 open in v7 too.
 
 **Known limit:** Windows does not show classic right-click commands when **more than 15 items** are selected. For more, drag and drop them onto `SecureEncrypt.cmd`.
+
+## 📄 License
+
+This project is released under the [MIT License](LICENSE): you may use, modify and distribute it free of charge; the only condition is that the copyright and license notice is kept.
 
 </details>
 
