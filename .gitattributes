@@ -1,2 +1,7 @@
 *.cmd -text
 *.bat -text
+
+# generated files and old releases: keep them out of the language statistics
+SecureEncrypt.cmd linguist-generated=true
+web/index.html linguist-generated=true
+old_versions/** linguist-vendored
