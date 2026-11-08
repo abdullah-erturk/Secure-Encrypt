@@ -143,7 +143,7 @@ header .tabs{flex:1 1 100%;order:5;margin:8px 0 0}
       <button class="tab" id="tabEnc" role="tab" aria-selected="true"></button>
       <button class="tab" id="tabDec" role="tab" aria-selected="false"></button>
     </div>
-    <select id="lang" aria-label="Language"><option value="en">English</option><option value="tr">T&uuml;rk&ccedil;e</option></select>
+    <select id="lang" aria-label="Language"><option value="en">English</option><option value="tr">T&uuml;rk&ccedil;e</option><option value="de">Deutsch</option></select>
   </header>
 
   <div class="msg bad hidden" id="t_insecure" style="margin:0 0 12px"></div>
@@ -593,6 +593,50 @@ if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
       about: 'Bu uygulama Abdullah ERT\u00dcRK taraf\u0131ndan kodlanm\u0131\u015ft\u0131r.<br><a href="https://buymeacoffee.com/abdullaherturk" target="_blank" rel="noopener noreferrer">Bana bir kahve \u0131smarla</a>',
       foot: 'A\u00e7\u0131k kaynak. SecureEncrypt for Windows (SEv2 bi\u00e7imi) ile uyumludur.',
       items: '\u00f6\u011fe'
+    },
+    de: {
+      sub: 'AES-256-Verschl\u00fcsselung und -Entschl\u00fcsselung in Ihrem Browser',
+      priv: '<b>Nichts verl\u00e4sst Ihr Ger\u00e4t.</b> Dateien und Passw\u00f6rter werden lokal auf dieser Seite verarbeitet; es werden keinerlei Daten irgendwohin hochgeladen.',
+      tab_enc: 'Verschl\u00fcsseln', tab_dec: 'Entschl\u00fcsseln',
+      drop_enc: 'Dateien oder Ordner hier ablegen', add_files: 'Dateien hinzuf\u00fcgen...', add_dir: 'Ordner hinzuf\u00fcgen...', clear: 'Leeren',
+      pw: 'Passwort (optional)', pw2: 'Passwort wiederholen',
+      pw_hint: 'Ohne Passwort wird der Inhalt nur verborgen (Komprimierung + XOR); das bietet keine Sicherheit, sondern verhindert lediglich, dass Klartext sichtbar ist.',
+      kf: 'Schl\u00fcsseldatei (optional)', kf_pick: 'Schl\u00fcsseldatei ausw\u00e4hlen...', kf_hint: 'Die Schl\u00fcsseldatei kann anstelle eines Passworts oder zusammen mit einem Passwort (Zwei-Faktor-Verfahren) verwendet werden. Entscheidend ist der Inhalt, nicht der Dateiname.',
+      btn_enc: 'Verschl\u00fcsseln', btn_dec: 'Entschl\u00fcsseln',
+      strength: ['Sehr schwach', 'Schwach', 'Mittel', 'Gut', 'Stark'],
+      drop_dec: '*_decrypt.cmd-Datei hier ablegen', pick_dec: '*_decrypt.cmd ausw\u00e4hlen...',
+      pw_dec: 'Passwort', kf_dec: 'Schl\u00fcsseldatei',
+      empty: 'F\u00fcgen Sie zuerst mindestens eine Datei oder einen Ordner hinzu.',
+      mismatch: 'Die beiden Passw\u00f6rter stimmen nicht \u00fcberein.',
+      nopw_confirm: 'Kein Passwort und keine Schl\u00fcsseldatei: Der Inhalt wird nur verborgen (nicht sicher). M\u00f6chten Sie fortfahren?',
+      limit_enc: 'Gr\u00f6\u00dfenbeschr\u00e4nkung: Die Gesamtgr\u00f6\u00dfe der auf dieser Seite hinzugef\u00fcgten Dateien und Ordner darf ungef\u00e4hr 1,5 GB nicht \u00fcberschreiten. F\u00fcr gr\u00f6\u00dfere Datenmengen verwenden Sie die f\u00fcr Windows entwickelte [[SE]]-Anwendung.',
+      limit_dec: 'Gr\u00f6\u00dfenbeschr\u00e4nkung: Die *_decrypt.cmd-Datei darf auf dieser Seite h\u00f6chstens ungef\u00e4hr 1,5 GB gro\u00df sein. F\u00fcr gr\u00f6\u00dfere Dateien verwenden Sie die f\u00fcr Windows entwickelte [[SE]]-Anwendung.',
+      too_big: 'Diese Datei ist f\u00fcr den Browser zu gro\u00df (Gesamtgrenze: ungef\u00e4hr 1,5 GB). F\u00fcr gr\u00f6\u00dfere Datenmengen verwenden Sie die f\u00fcr Windows entwickelte [[SE]]-Anwendung.',
+      too_big_dec: 'Diese Datei ist f\u00fcr den Browser zu gro\u00df (Grenze: ungef\u00e4hr 1,5 GB). Verwenden Sie die f\u00fcr Windows entwickelte [[SE]]-Anwendung: Klicken Sie mit der rechten Maustaste auf die Datei und w\u00e4hlen Sie \u201eEntschl\u00fcsseln\u201c, oder w\u00e4hlen Sie sie auf der Registerkarte \u201eEntschl\u00fcsseln\u201c im SecureEncrypt-Fenster aus.',
+      elapsed: 'Dauer: {0}', unit_h: 'Std.', unit_m: 'Min.', unit_s: 'Sek.',
+      no_stream: 'Die Komprimierungs-API (CompressionStream) ist in diesem Browser nicht verf\u00fcgbar. Bitte verwenden Sie eine aktuelle Version von Chrome, Edge, Firefox oder Safari.',
+      no_crypto: 'Die Verschl\u00fcsselungs-API des Browsers ist nicht verf\u00fcgbar. \u00d6ffnen Sie diese Seite in einem aktuellen Browser \u00fcber HTTPS (oder als lokale Datei).',
+      home: 'Startseite',
+      insecure: 'Da diese Seite \u00fcber eine unsichere Verbindung (unverschl\u00fcsseltes http://) ge\u00f6ffnet wurde, hat der Browser die Verschl\u00fcsselung und Entschl\u00fcsselung deaktiviert. \u00d6ffnen Sie die Seite \u00fcber https://, als http://localhost oder als lokale Datei.',
+      dir_hint: 'Wenn Sie einen Ordner ausw\u00e4hlen, bittet der Browser m\u00f6glicherweise um die Berechtigung zum \u201eHochladen\u201c. Ihre Dateien werden nirgendwohin hochgeladen: Diese Berechtigung erm\u00f6glicht der Seite lediglich, den Ordner zu lesen und die Dateien auf Ihrem Ger\u00e4t zu verschl\u00fcsseln.',
+      skipped: 'NICHT EINBEZOGEN (konnte nicht gelesen werden; ein Ordner, der per Drag-and-drop abgelegt, aber vom Browser nicht \u00fcbermittelt wurde, kann \u00fcber \u201eOrdner hinzuf\u00fcgen...\u201c hinzugef\u00fcgt werden): {0}',
+      err_noread: 'Es konnten keine Elemente gelesen werden. Verwenden Sie f\u00fcr Ordner \u201eOrdner hinzuf\u00fcgen...\u201c, anstatt sie per Drag-and-drop abzulegen.',
+      working: 'Wird verarbeitet... (Die Schl\u00fcsselableitung kann etwas dauern)',
+      enc_done: 'Fertig: {0} Elemente, {1} -> {2}. Modus: {3}.',
+      mode_aes: 'AES-256-CBC + HMAC-SHA256', mode_xor: 'nur verborgen (ohne Passwort)',
+      enc_note: 'Die Datei kann unter Windows per Doppelklick ausgef\u00fchrt (ein Fenster fragt nach dem Passwort) und auf jedem Ger\u00e4t mit dieser Seite ge\u00f6ffnet werden.',
+      dl: 'Herunterladen', dl_all: 'Alles herunterladen (ZIP)',
+      sanitized: 'Bei {0} Namen waren Zeichen enthalten, die Windows nicht zul\u00e4sst; sie wurden ge\u00e4ndert.',
+      dec_info_aes: 'Mit AES-256 verschl\u00fcsselt ({0} Iterationen).', dec_info_xor: 'Kein Passwort: Der Inhalt wurde nur verborgen.',
+      dec_need_kf: 'F\u00fcr diese Datei wird eine Schl\u00fcsseldatei ben\u00f6tigt.', dec_need_pw: 'F\u00fcr diese Datei wird ein Passwort ben\u00f6tigt.',
+      dec_ok: 'Entschl\u00fcsselt: {0} Dateien, {1}. Integrit\u00e4tspr\u00fcfung bestanden.',
+      dec_ok_bad: 'Entschl\u00fcsselt, aber die Integrit\u00e4tspr\u00fcfung (SHA-256) ist FEHLGESCHLAGEN. Der Inhalt k\u00f6nnte besch\u00e4digt oder ver\u00e4ndert worden sein.',
+      err_wrongpw: 'Passwort oder Schl\u00fcsseldatei ist falsch.', err_mac: 'Die Datei ist besch\u00e4digt oder wurde ver\u00e4ndert (Authentifizierung fehlgeschlagen). Es wurde nichts entschl\u00fcsselt.',
+      err_format: 'Dies ist keine g\u00fcltige SecureEncrypt-Datei (oder sie ist besch\u00e4digt).', err_path: 'Die Datei enth\u00e4lt einen unsicheren Pfad und wurde abgewiesen.',
+      err_needpw: 'Geben Sie das Passwort ein (und/oder w\u00e4hlen Sie die Schl\u00fcsseldatei aus).', err_mem: 'F\u00fcr diese Datei ist im Browser nicht gen\u00fcgend Arbeitsspeicher verf\u00fcgbar.', err_other: 'Fehler: {0}',
+      about: 'Diese Anwendung wurde von Abdullah ERT\u00dcRK programmiert.<br><a href="https://buymeacoffee.com/abdullaherturk" target="_blank" rel="noopener noreferrer">Einen Kaffee spendieren</a>',
+      foot: 'Open Source. Kompatibel mit SecureEncrypt for Windows (SEv2-Format).',
+      items: 'Elemente'
     }
   };
 
@@ -616,7 +660,7 @@ if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
   }
   // 42.35 s / 11 min 54 s / 1 h 5 min 3 s (the number is written with a comma in Turkish)
   function dur(sec) {
-    if (sec < 60) { var t = sec.toFixed(2); return (lang === 'tr' ? t.replace('.', ',') : t) + ' ' + T.unit_s; }
+    if (sec < 60) { var t = sec.toFixed(2); return (lang === 'tr' || lang === 'de' ? t.replace('.', ',') : t) + ' ' + T.unit_s; }
     var tot = Math.round(sec), h = Math.floor(tot / 3600), m = Math.floor((tot % 3600) / 60), s = tot % 60;
     return (h ? h + ' ' + T.unit_h + ' ' : '') + m + ' ' + T.unit_m + ' ' + s + ' ' + T.unit_s;
   }
@@ -987,7 +1031,7 @@ if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
   // ------------------------------------------------------------ start
   $('lang').onchange = function () { applyLang(this.value); };
   var saved = load('se_lang'), nav = ((navigator.language || 'en') + '').toLowerCase();
-  applyLang(saved && TXT[saved] ? saved : (nav.indexOf('tr') === 0 ? 'tr' : 'en'));
+  applyLang(saved && TXT[saved] ? saved : (nav.indexOf('tr') === 0 ? 'tr' : nav.indexOf('de') === 0 ? 'de' : 'en'));
 })();
 </script>
 </body>
