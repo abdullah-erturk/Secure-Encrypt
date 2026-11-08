@@ -242,12 +242,12 @@ namespace SE.UI
             d.ForeColor = Theme.Text;
             d.BackColor = Theme.Bg;
             d.KeyPreview = true;
-            d.ClientSize = new Size(520, 236);
+            d.ClientSize = new Size(520, 262);
             Backdrop bg = new Backdrop();
-            bg.SetBounds(0, 0, 520, 236);
+            bg.SetBounds(0, 0, 520, 262);
             d.Controls.Add(bg);
             Card c = new Card();
-            c.SetBounds(16, 16, 488, 152);
+            c.SetBounds(16, 16, 488, 178);
             bg.Controls.Add(c);
 
             Label l1 = new Label();
@@ -261,9 +261,10 @@ namespace SE.UI
             c.Controls.Add(coffee);
             c.Controls.Add(MakeLink("github.com/abdullah-erturk", "https://github.com/abdullah-erturk", 18, 92, 452));
             c.Controls.Add(MakeLink("erturk-dev.netlify.app", "https://erturk-dev.netlify.app", 18, 118, 452));
+            c.Controls.Add(MakeLink("erturk-dev.netlify.app/secureencrypt", "https://erturk-dev.netlify.app/secureencrypt", 18, 144, 452));
 
             FlatButton ok = new FlatButton(T("g_close"), true);
-            ok.SetBounds(384, 182, 120, 38);
+            ok.SetBounds(384, 208, 120, 38);
             ok.Click += new EventHandler(delegate { d.Close(); });
             bg.Controls.Add(ok);
             d.KeyDown += new KeyEventHandler(delegate(object s, KeyEventArgs e) { if (e.KeyCode == Keys.Escape) d.Close(); });
