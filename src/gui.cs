@@ -1184,7 +1184,31 @@ namespace SE.UI
             // the fonts already carry the scale: the text is drawn without the transform, only its position is scaled
             g.ResetTransform();
             using (SolidBrush b = new SolidBrush(Theme.Text)) g.DrawString("SecureEncrypt", Theme.Title, b, 62 * dpiScale, 12 * dpiScale);
-            using (SolidBrush b = new SolidBrush(Color.FromArgb(214, 220, 234))) g.DrawString(subtitle, Theme.Sub, b, 64 * dpiScale, 43 * dpiScale);
+            // the subtitle must stay left of the tab bar (or of the language button): shrink it a little, then cut it with "..."
+            float subX = 64 * dpiScale;
+            float subRight = (tabBar != null) ? tabBar.Left : (btnLang != null ? btnLang.Left : ClientSize.Width);
+            float subAvail = subRight - 12 * dpiScale - subX;
+            Font subFont = Theme.Sub; Font subTmp = null;
+            if (subAvail > 20 * dpiScale)
+            {
+                float subW = g.MeasureString(subtitle, subFont).Width;
+                if (subW > subAvail)
+                {
+                    float ratio = subAvail / subW;
+                    if (ratio < 0.82f) ratio = 0.82f;
+                    subTmp = new Font(subFont.FontFamily, subFont.Size * ratio, subFont.Style, subFont.Unit);
+                    subFont = subTmp;
+                }
+            }
+            else subAvail = ClientSize.Width - subX;
+            using (StringFormat sf = new StringFormat())
+            using (SolidBrush b = new SolidBrush(Color.FromArgb(214, 220, 234)))
+            {
+                sf.Trimming = StringTrimming.EllipsisCharacter;
+                sf.FormatFlags = StringFormatFlags.NoWrap;
+                g.DrawString(subtitle, subFont, b, new RectangleF(subX, 43 * dpiScale, subAvail, subFont.Height + 4 * dpiScale), sf);
+            }
+            if (subTmp != null) subTmp.Dispose();
         }
 
         protected override void OnKeyDown(KeyEventArgs e)
