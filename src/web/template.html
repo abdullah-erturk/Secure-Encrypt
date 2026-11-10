@@ -73,6 +73,7 @@ body.working .drop{opacity:.5}
 label.f{display:block;font-weight:600;margin:14px 0 6px}
 .field{width:100%}
 .hint{color:var(--muted);font-size:.85rem;margin:6px 0 0}
+.hint.attn{color:var(--warn);font-weight:600;background:rgba(242,184,75,.14);border:1px solid rgba(242,184,75,.5);border-radius:8px;padding:8px 10px}
 .meter{display:flex;gap:4px;margin-top:8px;align-items:center}
 .meter i{flex:1;height:5px;border-radius:3px;background:var(--field-b)}
 .meter span{font-size:.82rem;color:var(--muted);min-width:5.5em;text-align:right}
@@ -85,6 +86,7 @@ label.f{display:block;font-weight:600;margin:14px 0 6px}
 .bar{height:7px;border-radius:4px;background:var(--field-b);overflow:hidden;margin-top:12px}
 .bar i{display:block;height:100%;width:40%;background:linear-gradient(90deg,var(--accent),var(--accent2));animation:slide 1.1s infinite ease-in-out}
 @keyframes slide{0%{margin-left:-40%}100%{margin-left:100%}}
+.bar.det i{animation:none;margin-left:0;width:0;transition:width .25s linear}
 a{color:var(--accent2)}
 .results a.btn{display:inline-block;text-decoration:none}
 footer{margin-top:20px;text-align:center;color:var(--muted);font-size:.85rem}
@@ -143,7 +145,7 @@ header .tabs{flex:1 1 100%;order:5;margin:8px 0 0}
       <button class="tab" id="tabEnc" role="tab" aria-selected="true"></button>
       <button class="tab" id="tabDec" role="tab" aria-selected="false"></button>
     </div>
-    <select id="lang" aria-label="Language"><option value="en">English</option><option value="tr">T&uuml;rk&ccedil;e</option><option value="de">Deutsch</option><option value="es">Espa&ntilde;ol</option><option value="fr">Fran&ccedil;ais</option><option value="it">Italiano</option><option value="nl">Nederlands</option><option value="ru">&#1056;&#1091;&#1089;&#1089;&#1082;&#1080;&#1081;</option><option value="uk">&#1059;&#1082;&#1088;&#1072;&#1111;&#1085;&#1089;&#1100;&#1082;&#1072;</option></select>
+    <select id="lang" aria-label="Language">@@LANGOPTS@@</select>
   </header>
 
   <div class="msg bad hidden" id="t_insecure" style="margin:0 0 12px"></div>
@@ -183,6 +185,8 @@ header .tabs{flex:1 1 100%;order:5;margin:8px 0 0}
 
       <div class="row"><button class="btn primary" id="btnEncrypt"></button><button class="btn" id="btnClear"></button></div>
       <div class="bar hidden" id="barEnc"><i></i></div>
+      <div class="msg warn hidden" id="keepEnc"></div>
+      <div class="row"><button class="btn keep hidden" id="btnCancelEnc"></button></div>
       <div id="msgEnc"></div>
       <div class="results" id="resEnc"></div>
     </div></div></section>
@@ -193,6 +197,7 @@ header .tabs{flex:1 1 100%;order:5;margin:8px 0 0}
       <div class="row"><button class="btn" id="btnPickDec"></button><span class="nm hint" id="decName"></span></div>
       <input type="file" id="inDec" class="hidden">
       <p class="hint" id="t_limit_dec"></p>
+      <p class="hint attn hidden" id="t_big_dir"></p>
       <div id="decInfo"></div>
       </div><div class="col">
 
@@ -208,6 +213,8 @@ header .tabs{flex:1 1 100%;order:5;margin:8px 0 0}
 
       <div class="row"><button class="btn primary" id="btnDecrypt" disabled></button><button class="btn" id="btnClearDec"></button></div>
       <div class="bar hidden" id="barDec"><i></i></div>
+      <div class="msg warn hidden" id="keepDec"></div>
+      <div class="row"><button class="btn keep hidden" id="btnCancelDec"></button></div>
       <div id="msgDec"></div>
       <div class="results" id="resDec"></div>
     </div></div></section>
@@ -494,7 +501,339 @@ var SEcore = (function () {
     return chunks.concat(central, [end]);
   }
 
-  return { encode: encode, decode: decode, inspect: inspect, zip: zip, sha256: sha256, cat: cat, SEError: SEError, MAXIT: MAXIT };
+  // ================================================================ large data (streaming)
+  // Used when the data does not fit in memory. Nothing below holds more than a few MB: the data is read, encrypted and
+  // written piece by piece. The result is the same SEv2 file as above (readable by the Windows program and by the
+  // functions above). WebCrypto cannot do SHA-256 / HMAC incrementally, so those two are written out here.
+  function Sha256() {
+    this.h = new Int32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
+    this.w = new Int32Array(64); this.buf = new Uint8Array(64); this.bl = 0; this.len = 0;
+  }
+  // compresses the 64-byte blocks of p from offset o up to end (end - o is a multiple of 64). The 64 rounds are written out
+  // one after the other, with constant indexes and constants, by build.ps1 (about 1.5 times faster than a loop)
+  Sha256.prototype.blocks = function (p, o, end) {
+    var h = this.h, w = this.w;
+@@SHA256_BLOCKS@@
+  };
+  Sha256.prototype.update = function (d) {
+    var n = d.length, i = 0;
+    this.len += n;
+    if (this.bl > 0) {
+      var t = Math.min(64 - this.bl, n);
+      this.buf.set(d.subarray(0, t), this.bl); this.bl += t; i = t;
+      if (this.bl === 64) { this.blocks(this.buf, 0, 64); this.bl = 0; }
+    }
+    var whole = i + ((n - i) & ~63);
+    if (whole > i) { this.blocks(d, i, whole); i = whole; }
+    if (i < n) { this.buf.set(d.subarray(i), 0); this.bl = n - i; }
+    return this;
+  };
+  Sha256.prototype.digest = function () {
+    var bl = this.bl, tail = new Uint8Array(bl < 56 ? 64 : 128), tv = new DataView(tail.buffer);
+    tail.set(this.buf.subarray(0, bl)); tail[bl] = 0x80;
+    tv.setUint32(tail.length - 8, Math.floor(this.len / 536870912), false);
+    tv.setUint32(tail.length - 4, (this.len * 8) >>> 0, false);
+    this.blocks(tail, 0, tail.length);
+    var out = new Uint8Array(32), ov = new DataView(out.buffer);
+    for (var j = 0; j < 8; j++) ov.setInt32(j * 4, this.h[j], false);
+    return out;
+  };
+  function HmacSha256(key) {                       // key of at most 64 bytes (ours are 32)
+    var ip = new Uint8Array(64), op = new Uint8Array(64);
+    ip.set(key); op.set(key);
+    for (var i = 0; i < 64; i++) { ip[i] ^= 0x36; op[i] ^= 0x5c; }
+    this.inner = new Sha256().update(ip); this.op = op;
+  }
+  HmacSha256.prototype.update = function (d) { this.inner.update(d); return this; };
+  HmacSha256.prototype.digest = function () { return new Sha256().update(this.op).update(this.inner.digest()).digest(); };
+
+  // a first-in first-out byte buffer made of the pieces that arrived
+  function Queue() { this.parts = []; this.n = 0; this.off = 0; }
+  Queue.prototype.push = function (u8) { if (u8.length) { this.parts.push(u8); this.n += u8.length; } };
+  Queue.prototype.take = function (n) {
+    var out = new Uint8Array(n), k = 0;
+    while (k < n) {
+      var p = this.parts[0], c = Math.min(p.length - this.off, n - k);
+      out.set(p.subarray(this.off, this.off + c), k); k += c; this.off += c;
+      if (this.off === p.length) { this.parts.shift(); this.off = 0; }
+    }
+    this.n -= n;
+    return out;
+  };
+
+  var CHUNK = 4194304;                             // bytes per AES call (a multiple of 16)
+
+  function genStream(gen) {
+    var it = gen[Symbol.asyncIterator]();
+    return new ReadableStream({
+      pull: function (c) {
+        return it.next().then(function (r) { if (r.done) c.close(); else c.enqueue(r.value); }, function (e) { c.error(e); });
+      },
+      cancel: function () { return it.return ? it.return() : undefined; }
+    });
+  }
+
+  // the bytes of the container, one piece after the other. items: [{ rel, isDir, mtime, size, open() -> ReadableStream }]
+  async function* containerGen(items, total, onData) {
+    var i, e, hd = new Uint8Array(16), dv = new DataView(hd.buffer);
+    hd.set([0x53, 0x45, 0x43, 0x31], 0);
+    dv.setInt32(4, items.length, true); dv.setBigInt64(8, BigInt(total), true);
+    yield hd;
+    for (i = 0; i < items.length; i++) {
+      e = items[i];
+      var nb = te.encode(e.rel), h = new Uint8Array(1 + varLen(nb.length) + nb.length + 12 + (e.isDir ? 0 : 8)), p = 0;
+      var hv = new DataView(h.buffer);
+      h[p++] = e.isDir ? 1 : 0;
+      p = putVar(h, p, nb.length);
+      h.set(nb, p); p += nb.length;
+      hv.setBigInt64(p, fileTime(e.mtime || Date.now()), true); p += 8;
+      hv.setInt32(p, e.isDir ? 0 : 0x20, true); p += 4;
+      if (!e.isDir) hv.setBigInt64(p, BigInt(e.size), true);
+      yield h;
+      if (e.isDir) continue;
+      var rd = e.open().getReader(), got = 0;
+      try {
+        for (;;) {
+          var r = await rd.read();
+          if (r.done) break;
+          got += r.value.length;
+          if (got > e.size) throw SEError('CHANGED', e.rel);
+          if (onData) onData(r.value.length);
+          yield r.value;
+        }
+      } finally { try { rd.releaseLock(); } catch (x) { } }
+      if (got !== e.size) throw SEError('CHANGED', e.rel);
+    }
+  }
+
+  // o: { items, password, keyfile, gzip, head (Uint8Array), iterations, sink: { write(u8) -> Promise },
+  //      signal (AbortSignal), progress(stage 1|2, 0..1) }  ->  { sha, mode, len, n, total }
+  // Without a password and key file the data is only hidden (mode 1, the fixed XOR key), exactly like the Windows program does.
+  async function encodeStream(o) {
+    var items = o.items, i, total = 0, prog = o.progress || function () { };
+    for (i = 0; i < items.length; i++) if (!items[i].isDir) total += items[i].size;
+    var secret = await makeSecret(o.password, o.keyfile);
+    var useGz = !!o.gzip, flags = (useGz ? 1 : 0) | (o.password ? 2 : 0) | (o.keyfile ? 4 : 0), iter = o.iterations || 600000;
+    function chk() { if (o.signal && o.signal.aborted) throw SEError('ABORT'); }
+
+    // pass 1: SHA-256 of the container (it goes in front of the data)
+    var sha = new Sha256(), done = 0;
+    for await (var c of containerGen(items, total, function (n) { done += n; prog(1, total ? done / total : 1); })) { chk(); sha.update(c); }
+    var shaB = sha.digest();
+
+    if (!secret) {                                    // mode 1: hidden with the fixed XOR key (no password, no authentication)
+      var h1 = new Uint8Array(38), out1 = 0, j = 0;
+      h1.set(MAGIC, 0); h1[4] = 1; h1[5] = flags; h1.set(shaB, 6);
+      var put1 = async function (u8) { await o.sink.write(u8); out1 += u8.length; };
+      if (o.head && o.head.length) await put1(o.head);
+      await put1(h1);
+      done = 0;
+      var src1 = genStream(containerGen(items, total, function (n) { done += n; prog(2, total ? done / total : 1); }));
+      var rd1 = (useGz ? src1.pipeThrough(new CompressionStream('gzip')) : src1).getReader();
+      for (;;) {
+        chk();
+        var r1 = await rd1.read();
+        if (r1.done) break;
+        var u1 = r1.value, x1 = new Uint8Array(u1.length);
+        for (var m1 = 0; m1 < u1.length; m1++) { x1[m1] = u1[m1] ^ XORKEY[j]; if (++j === XORKEY.length) j = 0; }
+        await put1(x1);
+      }
+      return { sha: shaB, mode: 1, len: out1, n: items.length, total: total };
+    }
+
+    // pass 2: compress, encrypt, authenticate, write
+    var salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(16));
+    var k = await deriveKeys(secret, salt, iter);
+    var header = new Uint8Array(58);
+    header.set(MAGIC, 0); header[4] = 2; header[5] = flags;
+    new DataView(header.buffer).setUint32(6, iter, true);
+    header.set(salt, 10); header.set(iv, 26); header.set(k.kc, 42);
+    var aesKey = await subtle.importKey('raw', k.encKey, 'AES-CBC', false, ['encrypt']);
+    var mac = new HmacSha256(k.macKey), out = 0, cur = iv;
+    async function put(u8, authenticated) { if (authenticated) mac.update(u8); await o.sink.write(u8); out += u8.length; }
+    async function piece(data, final) {
+      var ct = new Uint8Array(await subtle.encrypt({ name: 'AES-CBC', iv: cur }, aesKey, data));
+      if (final) { await put(ct, true); return; }
+      var part = ct.subarray(0, ct.length - 16);          // without the padding block that WebCrypto always adds
+      cur = part.slice(part.length - 16);
+      await put(part, true);
+    }
+    if (o.head && o.head.length) await put(o.head, false);
+    await put(header, true);
+    done = 0;
+    var src = genStream(containerGen(items, total, function (n) { done += n; prog(2, total ? done / total : 1); }));
+    var rd = (useGz ? src.pipeThrough(new CompressionStream('gzip')) : src).getReader();
+    var q = new Queue();
+    q.push(shaB);
+    for (;;) {
+      chk();
+      var r = await rd.read();
+      if (r.done) break;
+      q.push(r.value);
+      while (q.n >= CHUNK) await piece(q.take(CHUNK), false);
+    }
+    await piece(q.take(q.n), true);
+    await put(mac.digest(), false);
+    return { sha: shaB, mode: 2, len: out, n: items.length, total: total };
+  }
+
+  // reads exact numbers of bytes from a stream and feeds everything it hands out to a SHA-256
+  function ByteReader(rd, sha) { this.rd = rd; this.sha = sha; this.q = new Queue(); }
+  ByteReader.prototype.fill = async function () {
+    var r;
+    try { r = await this.rd.read(); } catch (e) { if (e && e.code) throw e; throw SEError('FORMAT', 'gzip'); }
+    if (r.done) return false;
+    this.q.push(r.value);
+    return true;
+  };
+  ByteReader.prototype.exact = async function (n) {
+    while (this.q.n < n) if (!(await this.fill())) throw SEError('FORMAT', 'end');
+    var b = this.q.take(n); this.sha.update(b); return b;
+  };
+  ByteReader.prototype.copy = async function (n, cb) {
+    while (n > 0) {
+      var want = Math.min(n, 1048576);
+      while (this.q.n < want) if (!(await this.fill())) throw SEError('FORMAT', 'end');
+      var b = this.q.take(Math.min(this.q.n, n, CHUNK)); this.sha.update(b); n -= b.length;
+      await cb(b);
+    }
+  };
+  ByteReader.prototype.drain = async function () { while (await this.fill()) this.q.take(this.q.n); };
+
+  // o: { blob (a File), password, keyfile, entry(info) -> Promise<{ write(u8), close(), abort() } | undefined> (undefined for folders),
+  //      signal, progress(stage, 0..1) }  ->  { shaOk, n, total, iterations, flags }
+  // Password-protected file (mode 2): the whole file is authenticated first (stage 1); only then is anything decrypted and
+  // handed out (stage 2). Hidden file (mode 1, no password): one stage (0), the SHA-256 at the end tells whether it is intact.
+  async function decodeStream(o) {
+    var blob = o.blob, size = blob.size, prog = o.progress || function () { };
+    function chk() { if (o.signal && o.signal.aborted) throw SEError('ABORT'); }
+    var first = new Uint8Array(await blob.slice(0, Math.min(size, 262144)).arrayBuffer());
+    var s = findStart(first);
+    var hd = new Uint8Array(await blob.slice(s, s + 58).arrayBuffer());
+    if (hd.length < 38 || hd[0] !== MAGIC[0] || hd[1] !== MAGIC[1] || hd[2] !== MAGIC[2] || hd[3] !== MAGIC[3] || (hd[4] !== 1 && hd[4] !== 2)) throw SEError('FORMAT');
+    var mode = hd[4], flags = hd[5], iter = 0, pStart, pEnd, plen, expected = null, k = null, aesKey = null;
+    if (mode === 1) {
+      pStart = s + 38; pEnd = size; plen = pEnd - pStart;
+      expected = hd.slice(6, 38);
+    } else {
+      if (size < s + 58 + 32 + 16 || hd.length < 58) throw SEError('FORMAT');
+      iter = new DataView(hd.buffer).getUint32(6, true);
+      if (iter < 1000 || iter > MAXIT) throw SEError('FORMAT', 'iterations');
+      pStart = s + 58; pEnd = size - 32; plen = pEnd - pStart;
+      if (plen < 16 || plen % 16 !== 0) throw SEError('FORMAT');
+      var tag = new Uint8Array(await blob.slice(pEnd, size).arrayBuffer());
+      var secret = await makeSecret(o.password, o.keyfile);
+      if (!secret) throw SEError('NEEDPW');
+      k = await deriveKeys(secret, hd.slice(10, 26), iter);
+      if (!eq(k.kc, hd.subarray(42, 58))) throw SEError('WRONGPW');
+
+      // stage 1: authenticate
+      var mac = new HmacSha256(k.macKey), done = 0, rd, r;
+      mac.update(hd);
+      rd = blob.slice(pStart, pEnd).stream().getReader();
+      for (;;) {
+        chk(); r = await rd.read();
+        if (r.done) break;
+        mac.update(r.value); done += r.value.length; prog(1, done / plen);
+      }
+      if (!eq(mac.digest(), tag)) throw SEError('MAC');
+      aesKey = await subtle.importKey('raw', k.encKey, 'AES-CBC', false, ['encrypt', 'decrypt']);
+    }
+
+    // decrypt (or un-hide) -> (gunzip) -> read the container and hand the files out
+    async function* plain() {
+      var rd2 = blob.slice(pStart, pEnd).stream().getReader(), q = new Queue(), cur = hd.slice(26, 42), dc = 0;
+      async function dec(data, final) {
+        var next = data.slice(data.length - 16), input = data;
+        // WebCrypto insists on padding: for a piece that is not the last one, append a block that decrypts to valid padding
+        if (!final) input = cat([data, new Uint8Array(await subtle.encrypt({ name: 'AES-CBC', iv: next }, aesKey, new Uint8Array(0)))]);
+        var pt;
+        try { pt = new Uint8Array(await subtle.decrypt({ name: 'AES-CBC', iv: cur }, aesKey, input)); } catch (e) { throw SEError('FORMAT', 'padding'); }
+        cur = next;
+        return pt;
+      }
+      for (;;) {
+        chk();
+        var x = await rd2.read();
+        if (x.done) break;
+        dc += x.value.length; prog(2, dc / plen);
+        q.push(x.value);
+        while (q.n > CHUNK) yield await dec(q.take(CHUNK), false);
+      }
+      yield await dec(q.take(q.n), true);
+    }
+    async function* body() {                          // the first 32 bytes are the SHA-256 of the container
+      var got = 0, buf = new Uint8Array(32);
+      for await (var pt of plain()) {
+        if (got < 32) { var t = Math.min(32 - got, pt.length); buf.set(pt.subarray(0, t), got); got += t; pt = pt.subarray(t); if (got === 32) expected = buf; }
+        if (pt.length) yield pt;
+      }
+      if (got < 32) throw SEError('FORMAT');
+    }
+    async function* unhide() {                        // mode 1: the fixed XOR key, its position carries on from piece to piece
+      var rd3 = blob.slice(pStart, pEnd).stream().getReader(), j = 0, dc = 0;
+      for (;;) {
+        chk();
+        var x = await rd3.read();
+        if (x.done) break;
+        var u = x.value, y = new Uint8Array(u.length);
+        for (var i = 0; i < u.length; i++) { y[i] = u[i] ^ XORKEY[j]; if (++j === XORKEY.length) j = 0; }
+        dc += u.length; prog(0, plen ? dc / plen : 1);
+        yield y;
+      }
+    }
+    var bs = genStream(mode === 1 ? unhide() : body());
+    if (flags & 1) bs = bs.pipeThrough(new DecompressionStream('gzip'));
+    var sha = new Sha256(), br = new ByteReader(bs.getReader(), sha), writer = null, nFiles = 0, totalOut = 0;
+    try {
+      var ch = await br.exact(16), cv = new DataView(ch.buffer);
+      if (ch[0] !== 0x53 || ch[1] !== 0x45 || ch[2] !== 0x43 || ch[3] !== 0x31) throw SEError('FORMAT', 'container');
+      var count = cv.getInt32(4, true);
+      if (count < 0) throw SEError('FORMAT');
+      for (var i = 0; i < count; i++) {
+        var type = (await br.exact(1))[0], len = 0, mul = 1, b;
+        do {
+          if (mul > 268435456) throw SEError('FORMAT');
+          b = (await br.exact(1))[0]; len += (b & 127) * mul; mul *= 128;
+        } while (b & 128);
+        var rel = safeRel(td.decode(await br.exact(len)));
+        var ft = new DataView((await br.exact(8)).buffer).getBigInt64(0, true);
+        await br.exact(4);
+        var ms = Number(ft / 10000n - 11644473600000n);
+        if (type === 1) { await o.entry({ rel: rel, isDir: true, mtime: ms, size: 0 }); continue; }
+        var fl = Number(new DataView((await br.exact(8)).buffer).getBigInt64(0, true));
+        if (fl < 0) throw SEError('FORMAT');
+        writer = await o.entry({ rel: rel, isDir: false, mtime: ms, size: fl });
+        await br.copy(fl, function (u8) { return writer.write(u8); });
+        await writer.close(); writer = null;
+        nFiles++; totalOut += fl;
+      }
+      await br.drain();
+    } catch (e) {
+      if (writer && writer.abort) { try { await writer.abort(); } catch (x) { } }
+      throw e;
+    }
+    if (!expected) throw SEError('FORMAT');
+    return { shaOk: eq(sha.digest(), expected), n: nFiles, total: totalOut, iterations: iter, flags: flags };
+  }
+
+  // like inspect(), but for a File that is not read into memory
+  async function inspectBlob(blob) {
+    var first = new Uint8Array(await blob.slice(0, Math.min(blob.size, 262144)).arrayBuffer()), s = findStart(first);
+    var hd = new Uint8Array(await blob.slice(s, s + 58).arrayBuffer());
+    if (hd.length < 6 || hd[0] !== MAGIC[0] || hd[1] !== MAGIC[1] || hd[2] !== MAGIC[2] || hd[3] !== MAGIC[3]) throw SEError('FORMAT');
+    if (hd[4] === 1) {
+      if (hd.length < 38) throw SEError('FORMAT');
+      return { start: s, mode: 1, flags: hd[5], gzip: !!(hd[5] & 1), usesPw: false, usesKf: false, iterations: 0 };
+    }
+    if (hd[4] !== 2 || hd.length < 58) throw SEError('FORMAT');
+    var it = new DataView(hd.buffer).getUint32(6, true);
+    if (it < 1000 || it > MAXIT) throw SEError('FORMAT', 'iterations');
+    return { start: s, mode: 2, flags: hd[5], gzip: !!(hd[5] & 1), usesPw: !!(hd[5] & 2), usesKf: !!(hd[5] & 4), iterations: it };
+  }
+
+  return { encode: encode, decode: decode, inspect: inspect, zip: zip, sha256: sha256, cat: cat, SEError: SEError, MAXIT: MAXIT,
+           inspectBlob: inspectBlob, Sha256: Sha256, HmacSha256: HmacSha256, encodeStream: encodeStream, decodeStream: decodeStream, CHUNK: CHUNK };
 })();
 if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
 /*CORE-END*/
@@ -506,507 +845,7 @@ if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
   var HEAD_B64 = "@@HEAD@@";
 
   var TXT = {
-    en: {
-      sub: 'AES-256 encrypt & decrypt in your browser',
-      priv: '<b>Nothing leaves your device.</b> Files and passwords are processed locally in this page; no data is uploaded anywhere.',
-      tab_enc: 'Encrypt', tab_dec: 'Decrypt',
-      drop_enc: 'Drop files or folders here', add_files: 'Add files...', add_dir: 'Add folder...', clear: 'Clear',
-      pw: 'Password (optional)', pw2: 'Repeat password',
-      pw_hint: 'Without a password the content is only obfuscated (compressed + XOR), which is NOT security and only hides plain text.',
-      kf: 'Key file (optional)', kf_pick: 'Choose key file...', kf_hint: 'A key file can be used instead of a password or together with it (two factors). Its content, not its name, is what counts.',
-      btn_enc: 'Encrypt', btn_dec: 'Decrypt',
-      strength: ['Very weak', 'Weak', 'Fair', 'Good', 'Strong'],
-      drop_dec: 'Drop a *_decrypt.cmd file here', pick_dec: 'Choose *_decrypt.cmd...',
-      pw_dec: 'Password', kf_dec: 'Key file',
-      empty: 'Add at least one file or folder first.',
-      mismatch: 'The two passwords are different.',
-      nopw_confirm: 'No password and no key file: the content will only be obfuscated (not secure). Continue?',
-      limit_enc: 'Size limit: The files and folders you add can total about 1.5 GB in this page. For larger data use the [[SE]] application written for Windows.',
-      limit_dec: 'Size limit: The _decrypt.cmd file can be about 1.5 GB at most in this page. For larger files use the [[SE]] application written for Windows.',
-      too_big: 'This file is too large for the browser (limit about 1.5 GB in total). For large data use the [[SE]] application written for Windows.',
-      too_big_dec: 'This file is too large for the browser (limit about 1.5 GB). Decrypt it with [[SE]] on Windows: right-click it and choose "Decrypt", or choose it on the Decrypt tab of the SecureEncrypt window.',
-      elapsed: 'Time: {0}', unit_h: 'h', unit_m: 'min', unit_s: 's',
-      no_stream: 'This browser lacks the compression API (CompressionStream). Please use a current Chrome, Edge, Firefox or Safari.',
-      no_crypto: 'The browser cryptography API is not available. Open this page over HTTPS (or from a local file) in a current browser.',
-      home: 'Home',
-      insecure: 'This page was opened over an insecure connection (plain http://), so encryption and decryption are switched off by the browser. Open it over https://, as http://localhost, or as a local file.',
-      dir_hint: 'When you choose a folder, your browser may ask for permission to "upload" it. Your files are NOT uploaded anywhere: this only lets the page read the folder so it can encrypt it on your device.',
-      skipped: 'NOT included (could not be read; a dropped folder that the browser does not pass on can be added with "Add folder..."): {0}',
-      err_noread: 'None of the items could be read. For a folder use "Add folder..." instead of dragging it.',
-      working: 'Working... (deriving the key can take a moment)',
-      enc_done: 'Done: {0} item(s), {1} -> {2}. Mode: {3}.',
-      mode_aes: 'AES-256-CBC + HMAC-SHA256', mode_xor: 'obfuscation only (no password)',
-      enc_note: 'The file runs on Windows by double-click (a window asks for the password) and can be opened with this page on any device.',
-      dl: 'Download', dl_all: 'Download all (ZIP)',
-      sanitized: '{0} name(s) contained characters Windows does not allow and were changed.',
-      dec_info_aes: 'Encrypted with AES-256 ({0} iterations).', dec_info_xor: 'No password: the content is only obfuscated.',
-      dec_need_kf: 'This file needs a key file.', dec_need_pw: 'This file needs a password.',
-      dec_ok: 'Decrypted: {0} file(s), {1}. Integrity check passed.',
-      dec_ok_bad: 'Decrypted, but the integrity check (SHA-256) FAILED. The content may be damaged or modified.',
-      err_wrongpw: 'Wrong password or key file.', err_mac: 'The file is damaged or has been modified (authentication failed). Nothing was decrypted.',
-      err_format: 'This is not a valid SecureEncrypt file (or it is damaged).', err_path: 'The file contains an unsafe path and was rejected.',
-      err_needpw: 'Enter the password (and/or choose the key file).', err_mem: 'Not enough memory for this file in the browser.', err_other: 'Error: {0}',
-      about: 'This application was coded by Abdullah ERT\u00dcRK.<br><a href="https://buymeacoffee.com/abdullaherturk" target="_blank" rel="noopener noreferrer">Buy me a coffee</a>',
-      foot: 'Open source. Compatible with SecureEncrypt for Windows (SEv2 format).',
-      items: 'items'
-    },
-    tr: {
-      sub: 'Taray\u0131c\u0131n\u0131zda AES-256 \u015fifreleme ve \u00e7\u00f6zme',
-      priv: '<b>Hi\u00e7bir \u015fey cihaz\u0131n\u0131zdan \u00e7\u0131kmaz.</b> Dosyalar ve parolalar bu sayfada yerel olarak i\u015flenir; hi\u00e7bir veri hi\u00e7bir yere y\u00fcklenmez.',
-      tab_enc: '\u015eifrele', tab_dec: '\u015eifreyi \u00e7\u00f6z',
-      drop_enc: 'Dosya veya klas\u00f6rleri buraya b\u0131rak\u0131n', add_files: 'Dosya ekle...', add_dir: 'Klas\u00f6r ekle...', clear: 'Temizle',
-      pw: 'Parola (iste\u011fe ba\u011fl\u0131)', pw2: 'Parolay\u0131 tekrarlay\u0131n',
-      pw_hint: 'Parola olmadan i\u00e7erik yaln\u0131zca gizlenir (s\u0131k\u0131\u015ft\u0131rma + XOR); bu bir g\u00fcvenlik sa\u011flamaz, sadece d\u00fcz metnin g\u00f6r\u00fcnmesini engeller.',
-      kf: 'Anahtar dosyas\u0131 (iste\u011fe ba\u011fl\u0131)', kf_pick: 'Anahtar dosyas\u0131 se\u00e7...', kf_hint: 'Anahtar dosyas\u0131 parola yerine ya da parolayla birlikte (iki fakt\u00f6r) kullan\u0131labilir. Ad\u0131 de\u011fil, i\u00e7eri\u011fi \u00f6nemlidir.',
-      btn_enc: '\u015eifrele', btn_dec: '\u00c7\u00f6z',
-      strength: ['\u00c7ok zay\u0131f', 'Zay\u0131f', 'Orta', '\u0130yi', 'G\u00fc\u00e7l\u00fc'],
-      drop_dec: '*_decrypt.cmd dosyas\u0131n\u0131 buraya b\u0131rak\u0131n', pick_dec: '*_decrypt.cmd se\u00e7...',
-      pw_dec: 'Parola', kf_dec: 'Anahtar dosyas\u0131',
-      empty: '\u00d6nce en az bir dosya veya klas\u00f6r ekleyin.',
-      mismatch: '\u0130ki parola birbirinden farkl\u0131.',
-      nopw_confirm: 'Parola ve anahtar dosyas\u0131 yok: i\u00e7erik yaln\u0131zca gizlenir (g\u00fcvenli de\u011fildir). Devam edilsin mi?',
-      limit_enc: 'Boyut s\u0131n\u0131r\u0131: Bu sayfada eklenen dosya ve klas\u00f6rlerin toplam\u0131 en fazla yakla\u015f\u0131k 1,5 GB olabilir. Daha b\u00fcy\u00fck veriler i\u00e7in Windows i\u00e7in yaz\u0131lan [[SE]] uygulamas\u0131n\u0131 kullan\u0131n.',
-      limit_dec: 'Boyut s\u0131n\u0131r\u0131: Bu sayfada _decrypt.cmd dosyas\u0131 en fazla yakla\u015f\u0131k 1,5 GB olabilir. Daha b\u00fcy\u00fck dosyalar i\u00e7in Windows i\u00e7in yaz\u0131lan [[SE]] uygulamas\u0131n\u0131 kullan\u0131n.',
-      too_big: 'Bu dosya taray\u0131c\u0131 i\u00e7in \u00e7ok b\u00fcy\u00fck (toplam yakla\u015f\u0131k 1,5 GB s\u0131n\u0131r\u0131). Daha b\u00fcy\u00fck veriler i\u00e7in Windows i\u00e7in yaz\u0131lan [[SE]] uygulamas\u0131n\u0131 kullan\u0131n.',
-      too_big_dec: 'Bu dosya taray\u0131c\u0131 i\u00e7in \u00e7ok b\u00fcy\u00fck (yakla\u015f\u0131k 1,5 GB s\u0131n\u0131r\u0131). Windows i\u00e7in yaz\u0131lan [[SE]] uygulamas\u0131n\u0131 kullan\u0131n: Dosyaya sa\u011f t\u0131klay\u0131p "\u015eifreyi \u00e7\u00f6z" se\u00e7in ya da SecureEncrypt penceresinin "\u015eifreyi \u00e7\u00f6z" sekmesinden se\u00e7in.',
-      elapsed: 'S\u00fcre: {0}', unit_h: 'sa', unit_m: 'dk', unit_s: 'sn',
-      no_stream: 'Bu taray\u0131c\u0131da s\u0131k\u0131\u015ft\u0131rma API\'si (CompressionStream) yok. L\u00fctfen g\u00fcncel Chrome, Edge, Firefox veya Safari kullan\u0131n.',
-      no_crypto: 'Taray\u0131c\u0131n\u0131n \u015fifreleme API\'si kullan\u0131lam\u0131yor. Bu sayfay\u0131 g\u00fcncel bir taray\u0131c\u0131da HTTPS \u00fczerinden (ya da yerel dosya olarak) a\u00e7\u0131n.',
-      home: 'Ana sayfa',
-      insecure: 'Bu sayfa g\u00fcvenli olmayan bir ba\u011flant\u0131yla (d\u00fcz http://) a\u00e7\u0131ld\u0131\u011f\u0131 i\u00e7in taray\u0131c\u0131 \u015fifreleme ve \u00e7\u00f6zmeyi kapat\u0131r. Sayfay\u0131 https:// \u00fczerinden, http://localhost olarak ya da yerel dosya olarak a\u00e7\u0131n.',
-      dir_hint: 'Klas\u00f6r se\u00e7ti\u011finizde taray\u0131c\u0131 "y\u00fckleme" izni isteyebilir. Dosyalar\u0131n\u0131z hi\u00e7bir yere y\u00fcklenmez: bu izin yaln\u0131zca sayfan\u0131n klas\u00f6r\u00fc okuyup cihaz\u0131n\u0131zda \u015fifreleyebilmesi i\u00e7indir.',
-      skipped: 'DAH\u0130L ED\u0130LMED\u0130 (okunamad\u0131; s\u00fcr\u00fckleyip b\u0131rak\u0131lan ama taray\u0131c\u0131n\u0131n iletmedi\u011fi bir klas\u00f6r "Klas\u00f6r ekle..." ile eklenebilir): {0}',
-      err_noread: 'Hi\u00e7bir \u00f6\u011fe okunamad\u0131. Klas\u00f6r i\u00e7in s\u00fcr\u00fcklemek yerine "Klas\u00f6r ekle..." kullan\u0131n.',
-      working: '\u00c7al\u0131\u015f\u0131yor... (anahtar t\u00fcretme biraz s\u00fcrebilir)',
-      enc_done: 'Tamam: {0} \u00f6\u011fe, {1} -> {2}. Mod: {3}.',
-      mode_aes: 'AES-256-CBC + HMAC-SHA256', mode_xor: 'yaln\u0131zca gizleme (parolas\u0131z)',
-      enc_note: 'Dosya Windows\'ta \u00e7ift t\u0131klayarak \u00e7al\u0131\u015f\u0131r (bir pencere parolay\u0131 sorar) ve her cihazda bu sayfayla a\u00e7\u0131labilir.',
-      dl: '\u0130ndir', dl_all: 'T\u00fcm\u00fcn\u00fc indir (ZIP)',
-      sanitized: '{0} ad Windows\'un izin vermedi\u011fi karakterler i\u00e7erdi\u011fi i\u00e7in de\u011fi\u015ftirildi.',
-      dec_info_aes: 'AES-256 ile \u015fifrelenmi\u015f ({0} yineleme).', dec_info_xor: 'Parola yok: i\u00e7erik yaln\u0131zca gizlenmi\u015f.',
-      dec_need_kf: 'Bu dosya bir anahtar dosyas\u0131 gerektiriyor.', dec_need_pw: 'Bu dosya bir parola gerektiriyor.',
-      dec_ok: '\u00c7\u00f6z\u00fcld\u00fc: {0} dosya, {1}. B\u00fct\u00fcnl\u00fck denetimi ge\u00e7ti.',
-      dec_ok_bad: '\u00c7\u00f6z\u00fcld\u00fc ama b\u00fct\u00fcnl\u00fck denetimi (SHA-256) BA\u015eARISIZ. \u0130\u00e7erik bozulmu\u015f veya de\u011fi\u015ftirilmi\u015f olabilir.',
-      err_wrongpw: 'Parola veya anahtar dosyas\u0131 yanl\u0131\u015f.', err_mac: 'Dosya bozuk ya da de\u011fi\u015ftirilmi\u015f (kimlik do\u011frulama ba\u015far\u0131s\u0131z). Hi\u00e7bir \u015fey \u00e7\u00f6z\u00fclmedi.',
-      err_format: 'Bu ge\u00e7erli bir SecureEncrypt dosyas\u0131 de\u011fil (ya da bozuk).', err_path: 'Dosya g\u00fcvenli olmayan bir yol i\u00e7eriyor ve reddedildi.',
-      err_needpw: 'Parolay\u0131 girin (ve/veya anahtar dosyas\u0131n\u0131 se\u00e7in).', err_mem: 'Bu dosya i\u00e7in taray\u0131c\u0131da yeterli bellek yok.', err_other: 'Hata: {0}',
-      about: 'Bu uygulama Abdullah ERT\u00dcRK taraf\u0131ndan kodlanm\u0131\u015ft\u0131r.<br><a href="https://buymeacoffee.com/abdullaherturk" target="_blank" rel="noopener noreferrer">Bana bir kahve \u0131smarla</a>',
-      foot: 'A\u00e7\u0131k kaynak. SecureEncrypt for Windows (SEv2 bi\u00e7imi) ile uyumludur.',
-      items: '\u00f6\u011fe'
-    },
-    es: {
-      sub: "Cifrado y descifrado AES-256 en su navegador",
-      priv: "<b>Nada sale de su dispositivo.</b> Los archivos y las contrase\u00f1as se procesan localmente en esta p\u00e1gina; no se carga ning\u00fan dato.",
-      tab_enc: "Cifrar",
-      tab_dec: "Descifrar",
-      drop_enc: "Suelte aqu\u00ed archivos o carpetas",
-      add_files: "A\u00f1adir archivos...",
-      add_dir: "A\u00f1adir carpeta...",
-      clear: "Limpiar",
-      pw: "Contrase\u00f1a (opcional)",
-      pw2: "Repita la contrase\u00f1a",
-      pw_hint: "Sin contrase\u00f1a, el contenido solo se oculta (compresi\u00f3n + XOR); esto NO es seguridad, solo evita que el texto sin formato sea visible.",
-      kf: "Archivo de clave (opcional)",
-      kf_pick: "Elegir archivo de clave...",
-      kf_hint: "El archivo de clave puede utilizarse en lugar de una contrase\u00f1a o junto con ella (dos factores). Lo que importa es su contenido, no su nombre.",
-      btn_enc: "Cifrar",
-      btn_dec: "Descifrar",
-      strength: ["Muy d\u00e9bil", "D\u00e9bil", "Aceptable", "Buena", "Fuerte"],
-      drop_dec: "Suelte aqu\u00ed un archivo *_decrypt.cmd",
-      pick_dec: "Elegir *_decrypt.cmd...",
-      pw_dec: "Contrase\u00f1a",
-      kf_dec: "Archivo de clave",
-      empty: "A\u00f1ada primero al menos un archivo o una carpeta.",
-      mismatch: "Las dos contrase\u00f1as no coinciden.",
-      nopw_confirm: "No hay contrase\u00f1a ni archivo de clave: el contenido solo se ocultar\u00e1 (no es seguro). \u00bfDesea continuar?",
-      limit_enc: "L\u00edmite de tama\u00f1o: el total de archivos y carpetas a\u00f1adidos en esta p\u00e1gina puede ser de aproximadamente 1,5 GB como m\u00e1ximo. Para datos mayores, utilice la aplicaci\u00f3n [[SE]] para Windows.",
-      limit_dec: "L\u00edmite de tama\u00f1o: el archivo *_decrypt.cmd puede ocupar como m\u00e1ximo aproximadamente 1,5 GB en esta p\u00e1gina. Para archivos mayores, utilice la aplicaci\u00f3n [[SE]] para Windows.",
-      too_big: "Este archivo es demasiado grande para el navegador (l\u00edmite total aproximado: 1,5 GB). Para datos mayores, utilice la aplicaci\u00f3n [[SE]] para Windows.",
-      too_big_dec: "Este archivo es demasiado grande para el navegador (l\u00edmite aproximado: 1,5 GB). Desc\u00edfrelo con [[SE]] en Windows: haga clic derecho y elija \u00abDescifrar\u00bb, o selecci\u00f3nelo en la pesta\u00f1a Descifrar de SecureEncrypt.",
-      elapsed: "Tiempo: {0}",
-      unit_h: "h",
-      unit_m: "min",
-      unit_s: "s",
-      no_stream: "Este navegador no dispone de la API de compresi\u00f3n (CompressionStream). Utilice una versi\u00f3n actual de Chrome, Edge, Firefox o Safari.",
-      no_crypto: "La API criptogr\u00e1fica del navegador no est\u00e1 disponible. Abra esta p\u00e1gina mediante HTTPS (o como archivo local) en un navegador actualizado.",
-      home: "Inicio",
-      insecure: "Esta p\u00e1gina se abri\u00f3 mediante una conexi\u00f3n no segura (http:// sin cifrar), por lo que el navegador ha desactivado el cifrado y el descifrado. \u00c1brala mediante https://, como http://localhost o como archivo local.",
-      dir_hint: "Al elegir una carpeta, el navegador puede pedir permiso para \u00absubirla\u00bb. Sus archivos NO se suben a ning\u00fan sitio: el permiso solo permite que la p\u00e1gina lea la carpeta y cifre los archivos en su dispositivo.",
-      skipped: "NO incluido (no se pudo leer; una carpeta arrastrada que el navegador no transmite puede a\u00f1adirse con \u00abA\u00f1adir carpeta...\u00bb): {0}",
-      err_noread: "No se pudo leer ning\u00fan elemento. Para una carpeta, utilice \u00abA\u00f1adir carpeta...\u00bb en lugar de arrastrarla.",
-      working: "Procesando... (la derivaci\u00f3n de la clave puede tardar un momento)",
-      enc_done: "Hecho: {0} elemento(s), {1} -> {2}. Modo: {3}.",
-      mode_aes: "AES-256-CBC + HMAC-SHA256",
-      mode_xor: "solo ocultaci\u00f3n (sin contrase\u00f1a)",
-      enc_note: "El archivo se ejecuta en Windows con un doble clic (una ventana solicita la contrase\u00f1a) y puede abrirse con esta p\u00e1gina en cualquier dispositivo.",
-      dl: "Descargar",
-      dl_all: "Descargar todo (ZIP)",
-      sanitized: "Se modificaron {0} nombre(s) porque conten\u00edan caracteres no permitidos por Windows.",
-      dec_info_aes: "Cifrado con AES-256 ({0} iteraciones).",
-      dec_info_xor: "Sin contrase\u00f1a: el contenido solo est\u00e1 oculto.",
-      dec_need_kf: "Este archivo necesita un archivo de clave.",
-      dec_need_pw: "Este archivo necesita una contrase\u00f1a.",
-      dec_ok: "Descifrado: {0} archivo(s), {1}. Comprobaci\u00f3n de integridad correcta.",
-      dec_ok_bad: "Descifrado, pero la comprobaci\u00f3n de integridad (SHA-256) HA FALLADO. El contenido puede estar da\u00f1ado o modificado.",
-      err_wrongpw: "Contrase\u00f1a o archivo de clave incorrectos.",
-      err_mac: "El archivo est\u00e1 da\u00f1ado o ha sido modificado (fall\u00f3 la autenticaci\u00f3n). No se descifr\u00f3 nada.",
-      err_format: "No es un archivo SecureEncrypt v\u00e1lido (o est\u00e1 da\u00f1ado).",
-      err_path: "El archivo contiene una ruta no segura y se rechaz\u00f3.",
-      err_needpw: "Introduzca la contrase\u00f1a (y/o seleccione el archivo de clave).",
-      err_mem: "No hay memoria suficiente en el navegador para este archivo.",
-      err_other: "Error: {0}",
-      about: "Esta aplicaci\u00f3n ha sido programada por Abdullah ERT\u00dcRK.<br><a href=\"https://buymeacoffee.com/abdullaherturk\" target=\"_blank\" rel=\"noopener noreferrer\">Inv\u00edtame a un caf\u00e9</a>",
-      foot: "C\u00f3digo abierto. Compatible con SecureEncrypt para Windows (formato SEv2).",
-      items: "elementos",
-    },
-    fr: {
-      sub: "Chiffrement et d\u00e9chiffrement AES-256 dans votre navigateur",
-      priv: "<b>Rien ne quitte votre appareil.</b> Les fichiers et mots de passe sont trait\u00e9s localement sur cette page ; aucune donn\u00e9e n\u2019est envoy\u00e9e.",
-      tab_enc: "Chiffrer",
-      tab_dec: "D\u00e9chiffrer",
-      drop_enc: "D\u00e9posez les fichiers ou dossiers ici",
-      add_files: "Ajouter des fichiers...",
-      add_dir: "Ajouter un dossier...",
-      clear: "Effacer",
-      pw: "Mot de passe (facultatif)",
-      pw2: "R\u00e9p\u00e9ter le mot de passe",
-      pw_hint: "Sans mot de passe, le contenu est seulement masqu\u00e9 (compression + XOR) ; ce n\u2019est PAS une protection, cela emp\u00eache uniquement l\u2019affichage du texte brut.",
-      kf: "Fichier cl\u00e9 (facultatif)",
-      kf_pick: "Choisir un fichier cl\u00e9...",
-      kf_hint: "Le fichier cl\u00e9 peut remplacer le mot de passe ou \u00eatre utilis\u00e9 avec lui (deux facteurs). C\u2019est son contenu, et non son nom, qui compte.",
-      btn_enc: "Chiffrer",
-      btn_dec: "D\u00e9chiffrer",
-      strength: ["Tr\u00e8s faible", "Faible", "Moyen", "Bon", "Fort"],
-      drop_dec: "D\u00e9posez ici un fichier *_decrypt.cmd",
-      pick_dec: "Choisir *_decrypt.cmd...",
-      pw_dec: "Mot de passe",
-      kf_dec: "Fichier cl\u00e9",
-      empty: "Ajoutez d\u2019abord au moins un fichier ou un dossier.",
-      mismatch: "Les deux mots de passe sont diff\u00e9rents.",
-      nopw_confirm: "Aucun mot de passe ni fichier cl\u00e9 : le contenu sera seulement masqu\u00e9 (ce n\u2019est pas s\u00e9curis\u00e9). Continuer ?",
-      limit_enc: "Limite de taille : le total des fichiers et dossiers ajout\u00e9s sur cette page peut atteindre environ 1,5 Go. Pour des donn\u00e9es plus volumineuses, utilisez l\u2019application [[SE]] pour Windows.",
-      limit_dec: "Limite de taille : le fichier *_decrypt.cmd peut atteindre environ 1,5 Go au maximum sur cette page. Pour les fichiers plus volumineux, utilisez l\u2019application [[SE]] pour Windows.",
-      too_big: "Ce fichier est trop volumineux pour le navigateur (limite totale d\u2019environ 1,5 Go). Pour les donn\u00e9es plus volumineuses, utilisez l\u2019application [[SE]] pour Windows.",
-      too_big_dec: "Ce fichier est trop volumineux pour le navigateur (limite d\u2019environ 1,5 Go). D\u00e9chiffrez-le avec [[SE]] sous Windows : faites un clic droit et choisissez \u00ab D\u00e9chiffrer \u00bb, ou s\u00e9lectionnez-le dans l\u2019onglet D\u00e9chiffrer de SecureEncrypt.",
-      elapsed: "Dur\u00e9e : {0}",
-      unit_h: "h",
-      unit_m: "min",
-      unit_s: "s",
-      no_stream: "Ce navigateur ne dispose pas de l\u2019API de compression (CompressionStream). Veuillez utiliser une version r\u00e9cente de Chrome, Edge, Firefox ou Safari.",
-      no_crypto: "L\u2019API cryptographique du navigateur n\u2019est pas disponible. Ouvrez cette page via HTTPS (ou comme fichier local) dans un navigateur r\u00e9cent.",
-      home: "Accueil",
-      insecure: "Cette page a \u00e9t\u00e9 ouverte via une connexion non s\u00e9curis\u00e9e (http:// en clair) ; le navigateur a donc d\u00e9sactiv\u00e9 le chiffrement et le d\u00e9chiffrement. Ouvrez-la via https://, depuis http://localhost ou comme fichier local.",
-      dir_hint: "Lorsque vous choisissez un dossier, le navigateur peut demander l\u2019autorisation de le \u00ab t\u00e9l\u00e9verser \u00bb. Vos fichiers ne sont envoy\u00e9s nulle part : cette autorisation permet uniquement \u00e0 la page de lire le dossier et de chiffrer les fichiers sur votre appareil.",
-      skipped: "NON inclus (lecture impossible ; un dossier d\u00e9pos\u00e9 que le navigateur ne transmet pas peut \u00eatre ajout\u00e9 avec \u00ab Ajouter un dossier... \u00bb) : {0}",
-      err_noread: "Aucun \u00e9l\u00e9ment n\u2019a pu \u00eatre lu. Pour un dossier, utilisez \u00ab Ajouter un dossier... \u00bb au lieu de le faire glisser.",
-      working: "Traitement en cours... (la d\u00e9rivation de la cl\u00e9 peut prendre un instant)",
-      enc_done: "Termin\u00e9 : {0} \u00e9l\u00e9ment(s), {1} -> {2}. Mode : {3}.",
-      mode_aes: "AES-256-CBC + HMAC-SHA256",
-      mode_xor: "masquage uniquement (sans mot de passe)",
-      enc_note: "Le fichier s\u2019ex\u00e9cute sous Windows par double-clic (une fen\u00eatre demande le mot de passe) et peut \u00eatre ouvert avec cette page sur tout appareil.",
-      dl: "T\u00e9l\u00e9charger",
-      dl_all: "Tout t\u00e9l\u00e9charger (ZIP)",
-      sanitized: "{0} nom(s) contenaient des caract\u00e8res interdits par Windows et ont \u00e9t\u00e9 modifi\u00e9s.",
-      dec_info_aes: "Chiffr\u00e9 avec AES-256 ({0} it\u00e9rations).",
-      dec_info_xor: "Sans mot de passe : le contenu est seulement masqu\u00e9.",
-      dec_need_kf: "Ce fichier n\u00e9cessite un fichier cl\u00e9.",
-      dec_need_pw: "Ce fichier n\u00e9cessite un mot de passe.",
-      dec_ok: "D\u00e9chiffr\u00e9 : {0} fichier(s), {1}. V\u00e9rification d\u2019int\u00e9grit\u00e9 r\u00e9ussie.",
-      dec_ok_bad: "D\u00e9chiffr\u00e9, mais la v\u00e9rification d\u2019int\u00e9grit\u00e9 (SHA-256) a \u00c9CHOU\u00c9. Le contenu peut \u00eatre endommag\u00e9 ou modifi\u00e9.",
-      err_wrongpw: "Mot de passe ou fichier cl\u00e9 incorrect.",
-      err_mac: "Le fichier est endommag\u00e9 ou a \u00e9t\u00e9 modifi\u00e9 (\u00e9chec de l\u2019authentification). Rien n\u2019a \u00e9t\u00e9 d\u00e9chiffr\u00e9.",
-      err_format: "Ce fichier SecureEncrypt n\u2019est pas valide (ou est endommag\u00e9).",
-      err_path: "Le fichier contient un chemin non s\u00fbr et a \u00e9t\u00e9 refus\u00e9.",
-      err_needpw: "Saisissez le mot de passe (et/ou choisissez le fichier cl\u00e9).",
-      err_mem: "M\u00e9moire insuffisante dans le navigateur pour ce fichier.",
-      err_other: "Erreur : {0}",
-      about: "Cette application a \u00e9t\u00e9 programm\u00e9e par Abdullah ERT\u00dcRK.<br><a href=\"https://buymeacoffee.com/abdullaherturk\" target=\"_blank\" rel=\"noopener noreferrer\">Offrez-moi un caf\u00e9</a>",
-      foot: "Open source. Compatible avec SecureEncrypt pour Windows (format SEv2).",
-      items: "\u00e9l\u00e9ments",
-    },
-    it: {
-      sub: "Crittografia e decrittografia AES-256 nel browser",
-      priv: "<b>Nulla lascia il dispositivo.</b> File e password vengono elaborati localmente in questa pagina; nessun dato viene caricato.",
-      tab_enc: "Crittografa",
-      tab_dec: "Decrittografa",
-      drop_enc: "Trascina qui file o cartelle",
-      add_files: "Aggiungi file...",
-      add_dir: "Aggiungi cartella...",
-      clear: "Cancella",
-      pw: "Password (facoltativa)",
-      pw2: "Ripeti password",
-      pw_hint: "Senza password il contenuto viene solo offuscato (compressione + XOR): NON \u00e8 una protezione, impedisce soltanto di visualizzare il testo in chiaro.",
-      kf: "File chiave (facoltativo)",
-      kf_pick: "Scegli file chiave...",
-      kf_hint: "Il file chiave pu\u00f2 essere usato al posto della password oppure insieme ad essa (due fattori). Conta il contenuto, non il nome.",
-      btn_enc: "Crittografa",
-      btn_dec: "Decrittografa",
-      strength: ["Molto debole", "Debole", "Discreta", "Buona", "Forte"],
-      drop_dec: "Trascina qui un file *_decrypt.cmd",
-      pick_dec: "Scegli *_decrypt.cmd...",
-      pw_dec: "Password",
-      kf_dec: "File chiave",
-      empty: "Aggiungi prima almeno un file o una cartella.",
-      mismatch: "Le due password non corrispondono.",
-      nopw_confirm: "Nessuna password e nessun file chiave: il contenuto sar\u00e0 solo offuscato (non \u00e8 sicuro). Continuare?",
-      limit_enc: "Limite dimensioni: il totale dei file e delle cartelle aggiunti in questa pagina pu\u00f2 essere di circa 1,5 GB al massimo. Per quantit\u00e0 maggiori, usa l\u2019applicazione [[SE]] per Windows.",
-      limit_dec: "Limite dimensioni: il file *_decrypt.cmd pu\u00f2 essere grande al massimo circa 1,5 GB in questa pagina. Per file pi\u00f9 grandi, usa l\u2019applicazione [[SE]] per Windows.",
-      too_big: "Questo file \u00e8 troppo grande per il browser (limite totale di circa 1,5 GB). Per quantit\u00e0 maggiori, usa l\u2019applicazione [[SE]] per Windows.",
-      too_big_dec: "Questo file \u00e8 troppo grande per il browser (limite di circa 1,5 GB). Decrittografalo con [[SE]] su Windows: fai clic destro e scegli \u00abDecrittografa\u00bb, oppure selezionalo nella scheda Decrittografa di SecureEncrypt.",
-      elapsed: "Tempo: {0}",
-      unit_h: "h",
-      unit_m: "min",
-      unit_s: "s",
-      no_stream: "Questo browser non supporta l\u2019API di compressione (CompressionStream). Usa una versione aggiornata di Chrome, Edge, Firefox o Safari.",
-      no_crypto: "L\u2019API crittografica del browser non \u00e8 disponibile. Apri questa pagina tramite HTTPS (o come file locale) in un browser aggiornato.",
-      home: "Home",
-      insecure: "Questa pagina \u00e8 stata aperta tramite una connessione non sicura (http:// non crittografato), quindi il browser ha disattivato crittografia e decrittografia. Aprila tramite https://, come http://localhost o come file locale.",
-      dir_hint: "Quando scegli una cartella, il browser potrebbe chiedere il permesso di \u00abcaricarla\u00bb. I file NON vengono caricati da nessuna parte: il permesso consente solo alla pagina di leggere la cartella e crittografare i file sul dispositivo.",
-      skipped: "NON incluso (impossibile leggere; una cartella trascinata che il browser non trasmette pu\u00f2 essere aggiunta con \u00abAggiungi cartella...\u00bb): {0}",
-      err_noread: "Non \u00e8 stato possibile leggere alcun elemento. Per una cartella usa \u00abAggiungi cartella...\u00bb invece di trascinarla.",
-      working: "Elaborazione... (la derivazione della chiave pu\u00f2 richiedere qualche istante)",
-      enc_done: "Completato: {0} elemento/i, {1} -> {2}. Modalit\u00e0: {3}.",
-      mode_aes: "AES-256-CBC + HMAC-SHA256",
-      mode_xor: "solo offuscamento (senza password)",
-      enc_note: "Il file si avvia su Windows con un doppio clic (una finestra chiede la password) e pu\u00f2 essere aperto con questa pagina su qualsiasi dispositivo.",
-      dl: "Scarica",
-      dl_all: "Scarica tutto (ZIP)",
-      sanitized: "{0} nome/i contenevano caratteri non consentiti da Windows e sono stati modificati.",
-      dec_info_aes: "Crittografato con AES-256 ({0} iterazioni).",
-      dec_info_xor: "Nessuna password: il contenuto \u00e8 solo offuscato.",
-      dec_need_kf: "Questo file richiede un file chiave.",
-      dec_need_pw: "Questo file richiede una password.",
-      dec_ok: "Decrittografato: {0} file, {1}. Controllo di integrit\u00e0 superato.",
-      dec_ok_bad: "Decrittografato, ma il controllo di integrit\u00e0 (SHA-256) NON \u00c8 RIUSCITO. Il contenuto potrebbe essere danneggiato o modificato.",
-      err_wrongpw: "Password o file chiave errati.",
-      err_mac: "Il file \u00e8 danneggiato o \u00e8 stato modificato (autenticazione non riuscita). Non \u00e8 stato decrittografato nulla.",
-      err_format: "Questo non \u00e8 un file SecureEncrypt valido (oppure \u00e8 danneggiato).",
-      err_path: "Il file contiene un percorso non sicuro ed \u00e8 stato rifiutato.",
-      err_needpw: "Inserisci la password (e/o seleziona il file chiave).",
-      err_mem: "Memoria insufficiente nel browser per questo file.",
-      err_other: "Errore: {0}",
-      about: "Questa applicazione \u00e8 stata programmata da Abdullah ERT\u00dcRK.<br><a href=\"https://buymeacoffee.com/abdullaherturk\" target=\"_blank\" rel=\"noopener noreferrer\">Offrimi un caff\u00e8</a>",
-      foot: "Open source. Compatibile con SecureEncrypt per Windows (formato SEv2).",
-      items: "elementi",
-    },
-    nl: {
-      sub: "AES-256-versleuteling en -ontsleuteling in uw browser",
-      priv: "<b>Er verlaat niets uw apparaat.</b> Bestanden en wachtwoorden worden lokaal op deze pagina verwerkt; er worden geen gegevens ge\u00fcpload.",
-      tab_enc: "Versleutelen",
-      tab_dec: "Ontsleutelen",
-      drop_enc: "Sleep bestanden of mappen hierheen",
-      add_files: "Bestanden toevoegen...",
-      add_dir: "Map toevoegen...",
-      clear: "Wissen",
-      pw: "Wachtwoord (optioneel)",
-      pw2: "Wachtwoord herhalen",
-      pw_hint: "Zonder wachtwoord wordt de inhoud alleen verhuld (compressie + XOR); dit is GEEN beveiliging en verbergt alleen platte tekst.",
-      kf: "Sleutelbestand (optioneel)",
-      kf_pick: "Sleutelbestand kiezen...",
-      kf_hint: "Een sleutelbestand kan in plaats van een wachtwoord of samen ermee (twee factoren) worden gebruikt. De inhoud telt, niet de naam.",
-      btn_enc: "Versleutelen",
-      btn_dec: "Ontsleutelen",
-      strength: ["Zeer zwak", "Zwak", "Redelijk", "Goed", "Sterk"],
-      drop_dec: "Sleep hier een *_decrypt.cmd-bestand heen",
-      pick_dec: "*_decrypt.cmd kiezen...",
-      pw_dec: "Wachtwoord",
-      kf_dec: "Sleutelbestand",
-      empty: "Voeg eerst ten minste \u00e9\u00e9n bestand of map toe.",
-      mismatch: "De twee wachtwoorden zijn niet hetzelfde.",
-      nopw_confirm: "Geen wachtwoord en geen sleutelbestand: de inhoud wordt alleen verhuld (niet veilig). Doorgaan?",
-      limit_enc: "Groottebeperking: de totale grootte van de bestanden en mappen die u op deze pagina toevoegt, mag ongeveer 1,5 GB bedragen. Gebruik voor grotere gegevens de [[SE]]-applicatie voor Windows.",
-      limit_dec: "Groottebeperking: het bestand *_decrypt.cmd mag op deze pagina maximaal ongeveer 1,5 GB groot zijn. Gebruik voor grotere bestanden de [[SE]]-applicatie voor Windows.",
-      too_big: "Dit bestand is te groot voor de browser (totale limiet ongeveer 1,5 GB). Gebruik voor grotere gegevens de [[SE]]-applicatie voor Windows.",
-      too_big_dec: "Dit bestand is te groot voor de browser (limiet ongeveer 1,5 GB). Ontsleutel het met [[SE]] in Windows: klik met de rechtermuisknop en kies \u201eOntsleutelen\u201d, of selecteer het op het tabblad Ontsleutelen van SecureEncrypt.",
-      elapsed: "Tijd: {0}",
-      unit_h: "u",
-      unit_m: "min",
-      unit_s: "sec",
-      no_stream: "Deze browser heeft geen compressie-API (CompressionStream). Gebruik een actuele versie van Chrome, Edge, Firefox of Safari.",
-      no_crypto: "De cryptografie-API van de browser is niet beschikbaar. Open deze pagina via HTTPS (of als lokaal bestand) in een actuele browser.",
-      home: "Startpagina",
-      insecure: "Deze pagina is geopend via een onveilige verbinding (onversleuteld http://), daarom heeft de browser versleutelen en ontsleutelen uitgeschakeld. Open de pagina via https://, als http://localhost of als lokaal bestand.",
-      dir_hint: "Wanneer u een map kiest, kan de browser toestemming vragen om deze te \u201euploaden\u201d. Uw bestanden worden NIET ge\u00fcpload: deze toestemming laat de pagina alleen de map lezen en de bestanden op uw apparaat versleutelen.",
-      skipped: "NIET opgenomen (kon niet worden gelezen; een gesleepte map die de browser niet doorgeeft, kan worden toegevoegd met \u201eMap toevoegen...\u201d): {0}",
-      err_noread: "Geen enkel item kon worden gelezen. Gebruik voor een map \u201eMap toevoegen...\u201d in plaats van deze te slepen.",
-      working: "Bezig... (het afleiden van de sleutel kan even duren)",
-      enc_done: "Voltooid: {0} item(s), {1} -> {2}. Modus: {3}.",
-      mode_aes: "AES-256-CBC + HMAC-SHA256",
-      mode_xor: "alleen verhulling (zonder wachtwoord)",
-      enc_note: "Het bestand kan in Windows met een dubbelklik worden gestart (een venster vraagt om het wachtwoord) en kan op elk apparaat met deze pagina worden geopend.",
-      dl: "Downloaden",
-      dl_all: "Alles downloaden (ZIP)",
-      sanitized: "In {0} naam/namen stonden tekens die Windows niet toestaat; deze zijn gewijzigd.",
-      dec_info_aes: "Versleuteld met AES-256 ({0} iteraties).",
-      dec_info_xor: "Geen wachtwoord: de inhoud is alleen verhuld.",
-      dec_need_kf: "Voor dit bestand is een sleutelbestand nodig.",
-      dec_need_pw: "Voor dit bestand is een wachtwoord nodig.",
-      dec_ok: "Ontsleuteld: {0} bestand(en), {1}. Integriteitscontrole geslaagd.",
-      dec_ok_bad: "Ontsleuteld, maar de integriteitscontrole (SHA-256) is MISLUKT. De inhoud kan beschadigd of gewijzigd zijn.",
-      err_wrongpw: "Onjuist wachtwoord of sleutelbestand.",
-      err_mac: "Het bestand is beschadigd of gewijzigd (authenticatie mislukt). Er is niets ontsleuteld.",
-      err_format: "Dit is geen geldig SecureEncrypt-bestand (of het is beschadigd).",
-      err_path: "Het bestand bevat een onveilig pad en is geweigerd.",
-      err_needpw: "Voer het wachtwoord in (en/of kies het sleutelbestand).",
-      err_mem: "Onvoldoende geheugen in de browser voor dit bestand.",
-      err_other: "Fout: {0}",
-      about: "Deze toepassing is geprogrammeerd door Abdullah ERT\u00dcRK.<br><a href=\"https://buymeacoffee.com/abdullaherturk\" target=\"_blank\" rel=\"noopener noreferrer\">Koop een kop koffie voor mij</a>",
-      foot: "Open source. Compatibel met SecureEncrypt voor Windows (SEv2-indeling).",
-      items: "items",
-    },
-    ru: {
-      sub: "\u0428\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u0438 \u0440\u0430\u0441\u0448\u0438\u0444\u0440\u043e\u0432\u043a\u0430 AES-256 \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435",
-      priv: "<b>\u0414\u0430\u043d\u043d\u044b\u0435 \u043d\u0435 \u043f\u043e\u043a\u0438\u0434\u0430\u044e\u0442 \u0432\u0430\u0448\u0435 \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u043e.</b> \u0424\u0430\u0439\u043b\u044b \u0438 \u043f\u0430\u0440\u043e\u043b\u0438 \u043e\u0431\u0440\u0430\u0431\u0430\u0442\u044b\u0432\u0430\u044e\u0442\u0441\u044f \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e \u043d\u0430 \u044d\u0442\u043e\u0439 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0435; \u0434\u0430\u043d\u043d\u044b\u0435 \u043d\u0438\u043a\u0443\u0434\u0430 \u043d\u0435 \u0437\u0430\u0433\u0440\u0443\u0436\u0430\u044e\u0442\u0441\u044f.",
-      tab_enc: "\u0417\u0430\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u0442\u044c",
-      tab_dec: "\u0420\u0430\u0441\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u0442\u044c",
-      drop_enc: "\u041f\u0435\u0440\u0435\u0442\u0430\u0449\u0438\u0442\u0435 \u0441\u044e\u0434\u0430 \u0444\u0430\u0439\u043b\u044b \u0438\u043b\u0438 \u043f\u0430\u043f\u043a\u0438",
-      add_files: "\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0444\u0430\u0439\u043b\u044b...",
-      add_dir: "\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u043f\u0430\u043f\u043a\u0443...",
-      clear: "\u041e\u0447\u0438\u0441\u0442\u0438\u0442\u044c",
-      pw: "\u041f\u0430\u0440\u043e\u043b\u044c (\u043d\u0435\u043e\u0431\u044f\u0437\u0430\u0442\u0435\u043b\u044c\u043d\u043e)",
-      pw2: "\u041f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u0435 \u043f\u0430\u0440\u043e\u043b\u044c",
-      pw_hint: "\u0411\u0435\u0437 \u043f\u0430\u0440\u043e\u043b\u044f \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u043c\u043e\u0435 \u0442\u043e\u043b\u044c\u043a\u043e \u043c\u0430\u0441\u043a\u0438\u0440\u0443\u0435\u0442\u0441\u044f (\u0441\u0436\u0430\u0442\u0438\u0435 + XOR); \u044d\u0442\u043e \u041d\u0415 \u043e\u0431\u0435\u0441\u043f\u0435\u0447\u0438\u0432\u0430\u0435\u0442 \u0437\u0430\u0449\u0438\u0442\u0443, \u0430 \u043b\u0438\u0448\u044c \u0441\u043a\u0440\u044b\u0432\u0430\u0435\u0442 \u043e\u0431\u044b\u0447\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442.",
-      kf: "\u0424\u0430\u0439\u043b-\u043a\u043b\u044e\u0447 (\u043d\u0435\u043e\u0431\u044f\u0437\u0430\u0442\u0435\u043b\u044c\u043d\u043e)",
-      kf_pick: "\u0412\u044b\u0431\u0440\u0430\u0442\u044c \u0444\u0430\u0439\u043b-\u043a\u043b\u044e\u0447...",
-      kf_hint: "\u0424\u0430\u0439\u043b-\u043a\u043b\u044e\u0447 \u043c\u043e\u0436\u043d\u043e \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u044c \u0432\u043c\u0435\u0441\u0442\u043e \u043f\u0430\u0440\u043e\u043b\u044f \u0438\u043b\u0438 \u0432\u043c\u0435\u0441\u0442\u0435 \u0441 \u043d\u0438\u043c (\u0434\u0432\u0430 \u0444\u0430\u043a\u0442\u043e\u0440\u0430). \u0412\u0430\u0436\u043d\u043e \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u043c\u043e\u0435 \u0444\u0430\u0439\u043b\u0430, \u0430 \u043d\u0435 \u0435\u0433\u043e \u0438\u043c\u044f.",
-      btn_enc: "\u0417\u0430\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u0442\u044c",
-      btn_dec: "\u0420\u0430\u0441\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u0442\u044c",
-      strength: ["\u041e\u0447\u0435\u043d\u044c \u0441\u043b\u0430\u0431\u044b\u0439", "\u0421\u043b\u0430\u0431\u044b\u0439", "\u0421\u0440\u0435\u0434\u043d\u0438\u0439", "\u0425\u043e\u0440\u043e\u0448\u0438\u0439", "\u041d\u0430\u0434\u0451\u0436\u043d\u044b\u0439"],
-      drop_dec: "\u041f\u0435\u0440\u0435\u0442\u0430\u0449\u0438\u0442\u0435 \u0441\u044e\u0434\u0430 \u0444\u0430\u0439\u043b *_decrypt.cmd",
-      pick_dec: "\u0412\u044b\u0431\u0440\u0430\u0442\u044c *_decrypt.cmd...",
-      pw_dec: "\u041f\u0430\u0440\u043e\u043b\u044c",
-      kf_dec: "\u0424\u0430\u0439\u043b-\u043a\u043b\u044e\u0447",
-      empty: "\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u0434\u043e\u0431\u0430\u0432\u044c\u0442\u0435 \u0445\u043e\u0442\u044f \u0431\u044b \u043e\u0434\u0438\u043d \u0444\u0430\u0439\u043b \u0438\u043b\u0438 \u043f\u0430\u043f\u043a\u0443.",
-      mismatch: "\u041f\u0430\u0440\u043e\u043b\u0438 \u043d\u0435 \u0441\u043e\u0432\u043f\u0430\u0434\u0430\u044e\u0442.",
-      nopw_confirm: "\u041d\u0435\u0442 \u043f\u0430\u0440\u043e\u043b\u044f \u0438 \u0444\u0430\u0439\u043b\u0430-\u043a\u043b\u044e\u0447\u0430: \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u043c\u043e\u0435 \u0431\u0443\u0434\u0435\u0442 \u0442\u043e\u043b\u044c\u043a\u043e \u0437\u0430\u043c\u0430\u0441\u043a\u0438\u0440\u043e\u0432\u0430\u043d\u043e (\u044d\u0442\u043e \u043d\u0435\u0431\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u043e). \u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c?",
-      limit_enc: "\u041e\u0433\u0440\u0430\u043d\u0438\u0447\u0435\u043d\u0438\u0435 \u0440\u0430\u0437\u043c\u0435\u0440\u0430: \u043e\u0431\u0449\u0438\u0439 \u043e\u0431\u044a\u0451\u043c \u0434\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u043d\u044b\u0445 \u043d\u0430 \u044d\u0442\u043e\u0439 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0435 \u0444\u0430\u0439\u043b\u043e\u0432 \u0438 \u043f\u0430\u043f\u043e\u043a \u2014 \u043f\u0440\u0438\u043c\u0435\u0440\u043d\u043e \u0434\u043e 1,5 \u0413\u0411. \u0414\u043b\u044f \u0431\u043e\u043b\u044c\u0448\u0438\u0445 \u043e\u0431\u044a\u0451\u043c\u043e\u0432 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439\u0442\u0435 \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435 [[SE]] \u0434\u043b\u044f Windows.",
-      limit_dec: "\u041e\u0433\u0440\u0430\u043d\u0438\u0447\u0435\u043d\u0438\u0435 \u0440\u0430\u0437\u043c\u0435\u0440\u0430: \u0440\u0430\u0437\u043c\u0435\u0440 \u0444\u0430\u0439\u043b\u0430 *_decrypt.cmd \u043d\u0430 \u044d\u0442\u043e\u0439 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0435 \u2014 \u043f\u0440\u0438\u043c\u0435\u0440\u043d\u043e \u0434\u043e 1,5 \u0413\u0411. \u0414\u043b\u044f \u0431\u043e\u043b\u0435\u0435 \u043a\u0440\u0443\u043f\u043d\u044b\u0445 \u0444\u0430\u0439\u043b\u043e\u0432 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439\u0442\u0435 \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435 [[SE]] \u0434\u043b\u044f Windows.",
-      too_big: "\u0424\u0430\u0439\u043b \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u0432\u0435\u043b\u0438\u043a \u0434\u043b\u044f \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0430 (\u043e\u0431\u0449\u0438\u0439 \u043f\u0440\u0435\u0434\u0435\u043b \u2014 \u043e\u043a\u043e\u043b\u043e 1,5 \u0413\u0411). \u0414\u043b\u044f \u0431\u043e\u043b\u044c\u0448\u0438\u0445 \u043e\u0431\u044a\u0451\u043c\u043e\u0432 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439\u0442\u0435 \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435 [[SE]] \u0434\u043b\u044f Windows.",
-      too_big_dec: "\u0424\u0430\u0439\u043b \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u0432\u0435\u043b\u0438\u043a \u0434\u043b\u044f \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0430 (\u043f\u0440\u0435\u0434\u0435\u043b \u2014 \u043e\u043a\u043e\u043b\u043e 1,5 \u0413\u0411). \u0420\u0430\u0441\u0448\u0438\u0444\u0440\u0443\u0439\u0442\u0435 \u0435\u0433\u043e \u0441 \u043f\u043e\u043c\u043e\u0449\u044c\u044e [[SE]] \u0432 Windows: \u0449\u0451\u043b\u043a\u043d\u0438\u0442\u0435 \u043f\u0440\u0430\u0432\u043e\u0439 \u043a\u043d\u043e\u043f\u043a\u043e\u0439 \u043c\u044b\u0448\u0438 \u0438 \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u00ab\u0420\u0430\u0441\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u0442\u044c\u00bb \u043b\u0438\u0431\u043e \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0444\u0430\u0439\u043b \u043d\u0430 \u0432\u043a\u043b\u0430\u0434\u043a\u0435 \u0440\u0430\u0441\u0448\u0438\u0444\u0440\u043e\u0432\u043a\u0438 SecureEncrypt.",
-      elapsed: "\u0412\u0440\u0435\u043c\u044f: {0}",
-      unit_h: "\u0447",
-      unit_m: "\u043c\u0438\u043d",
-      unit_s: "\u0441",
-      no_stream: "\u0412 \u044d\u0442\u043e\u043c \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d API \u0441\u0436\u0430\u0442\u0438\u044f (CompressionStream). \u0418\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439\u0442\u0435 \u0430\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u0443\u044e \u0432\u0435\u0440\u0441\u0438\u044e Chrome, Edge, Firefox \u0438\u043b\u0438 Safari.",
-      no_crypto: "\u041a\u0440\u0438\u043f\u0442\u043e\u0433\u0440\u0430\u0444\u0438\u0447\u0435\u0441\u043a\u0438\u0439 API \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0430 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d. \u041e\u0442\u043a\u0440\u043e\u0439\u0442\u0435 \u044d\u0442\u0443 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 \u0447\u0435\u0440\u0435\u0437 HTTPS (\u0438\u043b\u0438 \u043a\u0430\u043a \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 \u0444\u0430\u0439\u043b) \u0432 \u0430\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e\u043c \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435.",
-      home: "\u0413\u043b\u0430\u0432\u043d\u0430\u044f",
-      insecure: "\u0421\u0442\u0440\u0430\u043d\u0438\u0446\u0430 \u043e\u0442\u043a\u0440\u044b\u0442\u0430 \u0447\u0435\u0440\u0435\u0437 \u043d\u0435\u0431\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u043e\u0435 \u0441\u043e\u0435\u0434\u0438\u043d\u0435\u043d\u0438\u0435 (\u043e\u0431\u044b\u0447\u043d\u044b\u0439 http://), \u043f\u043e\u044d\u0442\u043e\u043c\u0443 \u0431\u0440\u0430\u0443\u0437\u0435\u0440 \u043e\u0442\u043a\u043b\u044e\u0447\u0438\u043b \u0448\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u0438 \u0440\u0430\u0441\u0448\u0438\u0444\u0440\u043e\u0432\u043a\u0443. \u041e\u0442\u043a\u0440\u043e\u0439\u0442\u0435 \u0435\u0451 \u0447\u0435\u0440\u0435\u0437 https://, \u043a\u0430\u043a http://localhost \u0438\u043b\u0438 \u043a\u0430\u043a \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 \u0444\u0430\u0439\u043b.",
-      dir_hint: "\u041f\u0440\u0438 \u0432\u044b\u0431\u043e\u0440\u0435 \u043f\u0430\u043f\u043a\u0438 \u0431\u0440\u0430\u0443\u0437\u0435\u0440 \u043c\u043e\u0436\u0435\u0442 \u0437\u0430\u043f\u0440\u043e\u0441\u0438\u0442\u044c \u0440\u0430\u0437\u0440\u0435\u0448\u0435\u043d\u0438\u0435 \u043d\u0430 \u0435\u0451 \u00ab\u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0443\u00bb. \u0424\u0430\u0439\u043b\u044b \u041d\u0418\u041a\u0423\u0414\u0410 \u043d\u0435 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u044f\u044e\u0442\u0441\u044f: \u0440\u0430\u0437\u0440\u0435\u0448\u0435\u043d\u0438\u0435 \u043d\u0443\u0436\u043d\u043e \u0442\u043e\u043b\u044c\u043a\u043e \u0434\u043b\u044f \u0447\u0442\u0435\u043d\u0438\u044f \u043f\u0430\u043f\u043a\u0438 \u0438 \u0448\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u0438\u044f \u0444\u0430\u0439\u043b\u043e\u0432 \u043d\u0430 \u0432\u0430\u0448\u0435\u043c \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0435.",
-      skipped: "\u041d\u0415 \u0432\u043a\u043b\u044e\u0447\u0435\u043d\u043e (\u043d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043f\u0440\u043e\u0447\u0438\u0442\u0430\u0442\u044c; \u043f\u0430\u043f\u043a\u0443, \u043a\u043e\u0442\u043e\u0440\u0443\u044e \u0431\u0440\u0430\u0443\u0437\u0435\u0440 \u043d\u0435 \u043f\u0435\u0440\u0435\u0434\u0430\u043b \u043f\u0440\u0438 \u043f\u0435\u0440\u0435\u0442\u0430\u0441\u043a\u0438\u0432\u0430\u043d\u0438\u0438, \u043c\u043e\u0436\u043d\u043e \u0434\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0447\u0435\u0440\u0435\u0437 \u00ab\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u043f\u0430\u043f\u043a\u0443...\u00bb): {0}",
-      err_noread: "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043f\u0440\u043e\u0447\u0438\u0442\u0430\u0442\u044c \u043d\u0438 \u043e\u0434\u043d\u043e\u0433\u043e \u044d\u043b\u0435\u043c\u0435\u043d\u0442\u0430. \u0414\u043b\u044f \u043f\u0430\u043f\u043a\u0438 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439\u0442\u0435 \u00ab\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u043f\u0430\u043f\u043a\u0443...\u00bb, \u0430 \u043d\u0435 \u043f\u0435\u0440\u0435\u0442\u0430\u0441\u043a\u0438\u0432\u0430\u043d\u0438\u0435.",
-      working: "\u041e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0430... (\u0432\u044b\u0447\u0438\u0441\u043b\u0435\u043d\u0438\u0435 \u043a\u043b\u044e\u0447\u0430 \u043c\u043e\u0436\u0435\u0442 \u0437\u0430\u043d\u044f\u0442\u044c \u043d\u0435\u043a\u043e\u0442\u043e\u0440\u043e\u0435 \u0432\u0440\u0435\u043c\u044f)",
-      enc_done: "\u0413\u043e\u0442\u043e\u0432\u043e: \u044d\u043b\u0435\u043c\u0435\u043d\u0442\u043e\u0432: {0}, {1} -> {2}. \u0420\u0435\u0436\u0438\u043c: {3}.",
-      mode_aes: "AES-256-CBC + HMAC-SHA256",
-      mode_xor: "\u0442\u043e\u043b\u044c\u043a\u043e \u043c\u0430\u0441\u043a\u0438\u0440\u043e\u0432\u043a\u0430 (\u0431\u0435\u0437 \u043f\u0430\u0440\u043e\u043b\u044f)",
-      enc_note: "\u0424\u0430\u0439\u043b \u0437\u0430\u043f\u0443\u0441\u043a\u0430\u0435\u0442\u0441\u044f \u0432 Windows \u0434\u0432\u043e\u0439\u043d\u044b\u043c \u0449\u0435\u043b\u0447\u043a\u043e\u043c (\u043e\u043a\u043d\u043e \u0437\u0430\u043f\u0440\u043e\u0441\u0438\u0442 \u043f\u0430\u0440\u043e\u043b\u044c) \u0438 \u043c\u043e\u0436\u0435\u0442 \u0431\u044b\u0442\u044c \u043e\u0442\u043a\u0440\u044b\u0442 \u043d\u0430 \u043b\u044e\u0431\u043e\u043c \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0435 \u0441 \u043f\u043e\u043c\u043e\u0449\u044c\u044e \u044d\u0442\u043e\u0439 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b.",
-      dl: "\u0421\u043a\u0430\u0447\u0430\u0442\u044c",
-      dl_all: "\u0421\u043a\u0430\u0447\u0430\u0442\u044c \u0432\u0441\u0451 (ZIP)",
-      sanitized: "\u0412 {0} \u0438\u043c\u0435\u043d\u0438(\u0430\u0445) \u0431\u044b\u043b\u0438 \u0441\u0438\u043c\u0432\u043e\u043b\u044b, \u043d\u0435\u0434\u043e\u043f\u0443\u0441\u0442\u0438\u043c\u044b\u0435 \u0432 Windows; \u043e\u043d\u0438 \u0437\u0430\u043c\u0435\u043d\u0435\u043d\u044b.",
-      dec_info_aes: "\u0417\u0430\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u043e AES-256 (\u0438\u0442\u0435\u0440\u0430\u0446\u0438\u0439: {0}).",
-      dec_info_xor: "\u0411\u0435\u0437 \u043f\u0430\u0440\u043e\u043b\u044f: \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u043c\u043e\u0435 \u0442\u043e\u043b\u044c\u043a\u043e \u0437\u0430\u043c\u0430\u0441\u043a\u0438\u0440\u043e\u0432\u0430\u043d\u043e.",
-      dec_need_kf: "\u0414\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u0444\u0430\u0439\u043b\u0430 \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044f \u0444\u0430\u0439\u043b-\u043a\u043b\u044e\u0447.",
-      dec_need_pw: "\u0414\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u0444\u0430\u0439\u043b\u0430 \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044f \u043f\u0430\u0440\u043e\u043b\u044c.",
-      dec_ok: "\u0420\u0430\u0441\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u043e: \u0444\u0430\u0439\u043b\u043e\u0432: {0}, {1}. \u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u0446\u0435\u043b\u043e\u0441\u0442\u043d\u043e\u0441\u0442\u0438 \u043f\u0440\u043e\u0439\u0434\u0435\u043d\u0430.",
-      dec_ok_bad: "\u0420\u0430\u0441\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u043e, \u043d\u043e \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u0446\u0435\u043b\u043e\u0441\u0442\u043d\u043e\u0441\u0442\u0438 (SHA-256) \u041d\u0415 \u041f\u0420\u041e\u0419\u0414\u0415\u041d\u0410. \u0421\u043e\u0434\u0435\u0440\u0436\u0438\u043c\u043e\u0435 \u043c\u043e\u0436\u0435\u0442 \u0431\u044b\u0442\u044c \u043f\u043e\u0432\u0440\u0435\u0436\u0434\u0435\u043d\u043e \u0438\u043b\u0438 \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u043e.",
-      err_wrongpw: "\u041d\u0435\u0432\u0435\u0440\u043d\u044b\u0439 \u043f\u0430\u0440\u043e\u043b\u044c \u0438\u043b\u0438 \u0444\u0430\u0439\u043b-\u043a\u043b\u044e\u0447.",
-      err_mac: "\u0424\u0430\u0439\u043b \u043f\u043e\u0432\u0440\u0435\u0436\u0434\u0451\u043d \u0438\u043b\u0438 \u0438\u0437\u043c\u0435\u043d\u0451\u043d (\u043e\u0448\u0438\u0431\u043a\u0430 \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0438 \u043f\u043e\u0434\u043b\u0438\u043d\u043d\u043e\u0441\u0442\u0438). \u0420\u0430\u0441\u0448\u0438\u0444\u0440\u043e\u0432\u043a\u0430 \u043d\u0435 \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0430.",
-      err_format: "\u042d\u0442\u043e \u043d\u0435\u0434\u043e\u043f\u0443\u0441\u0442\u0438\u043c\u044b\u0439 \u0444\u0430\u0439\u043b SecureEncrypt (\u0438\u043b\u0438 \u043e\u043d \u043f\u043e\u0432\u0440\u0435\u0436\u0434\u0451\u043d).",
-      err_path: "\u0424\u0430\u0439\u043b \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442 \u043d\u0435\u0431\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u044b\u0439 \u043f\u0443\u0442\u044c \u0438 \u0431\u044b\u043b \u043e\u0442\u043a\u043b\u043e\u043d\u0451\u043d.",
-      err_needpw: "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043f\u0430\u0440\u043e\u043b\u044c (\u0438/\u0438\u043b\u0438 \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0444\u0430\u0439\u043b-\u043a\u043b\u044e\u0447).",
-      err_mem: "\u0412 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 \u043d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e \u043f\u0430\u043c\u044f\u0442\u0438 \u0434\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u0444\u0430\u0439\u043b\u0430.",
-      err_other: "\u041e\u0448\u0438\u0431\u043a\u0430: {0}",
-      about: "\u042d\u0442\u043e \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435 \u0440\u0430\u0437\u0440\u0430\u0431\u043e\u0442\u0430\u043b Abdullah ERT\u00dcRK.<br><a href=\"https://buymeacoffee.com/abdullaherturk\" target=\"_blank\" rel=\"noopener noreferrer\">\u0423\u0433\u043e\u0441\u0442\u0438\u0442\u044c \u043c\u0435\u043d\u044f \u043a\u043e\u0444\u0435</a>",
-      foot: "\u041e\u0442\u043a\u0440\u044b\u0442\u044b\u0439 \u0438\u0441\u0445\u043e\u0434\u043d\u044b\u0439 \u043a\u043e\u0434. \u0421\u043e\u0432\u043c\u0435\u0441\u0442\u0438\u043c\u043e \u0441 SecureEncrypt \u0434\u043b\u044f Windows (\u0444\u043e\u0440\u043c\u0430\u0442 SEv2).",
-      items: "\u044d\u043b\u0435\u043c\u0435\u043d\u0442\u043e\u0432",
-    },
-    uk: {
-      sub: '\u0428\u0438\u0444\u0440\u0443\u0432\u0430\u043d\u043d\u044f \u0442\u0430 \u0440\u043e\u0437\u0448\u0438\u0444\u0440\u0443\u0432\u0430\u043d\u043d\u044f AES-256 \u0443 \u0432\u0430\u0448\u043e\u043c\u0443 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0456',
-      priv: '<b>\u0414\u0430\u043d\u0456 \u043d\u0435 \u0437\u0430\u043b\u0438\u0448\u0430\u044e\u0442\u044c \u0432\u0430\u0448 \u043f\u0440\u0438\u0441\u0442\u0440\u0456\u0439.</b> \u0424\u0430\u0439\u043b\u0438 \u0442\u0430 \u043f\u0430\u0440\u043e\u043b\u0456 \u043e\u0431\u0440\u043e\u0431\u043b\u044f\u044e\u0442\u044c\u0441\u044f \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e \u043d\u0430 \u0446\u0456\u0439 \u0441\u0442\u043e\u0440\u0456\u043d\u0446\u0456; \u043d\u0456\u0447\u043e\u0433\u043e \u043d\u0456\u043a\u0443\u0434\u0438 \u043d\u0435 \u0437\u0430\u0432\u0430\u043d\u0442\u0430\u0436\u0443\u0454\u0442\u044c\u0441\u044f.',
-      tab_enc: '\u0417\u0430\u0448\u0438\u0444\u0440\u0443\u0432\u0430\u0442\u0438', tab_dec: '\u0420\u043e\u0437\u0448\u0438\u0444\u0440\u0443\u0432\u0430\u0442\u0438',
-      drop_enc: '\u041f\u0435\u0440\u0435\u0442\u044f\u0433\u043d\u0456\u0442\u044c \u0441\u044e\u0434\u0438 \u0444\u0430\u0439\u043b\u0438 \u0430\u0431\u043e \u043f\u0430\u043f\u043a\u0438', add_files: '\u0414\u043e\u0434\u0430\u0442\u0438 \u0444\u0430\u0439\u043b\u0438...', add_dir: '\u0414\u043e\u0434\u0430\u0442\u0438 \u043f\u0430\u043f\u043a\u0443...', clear: '\u041e\u0447\u0438\u0441\u0442\u0438\u0442\u0438',
-      pw: '\u041f\u0430\u0440\u043e\u043b\u044c (\u043d\u0435\u043e\u0431\u043e\u0432\'\u044f\u0437\u043a\u043e\u0432\u043e)', pw2: '\u041f\u043e\u0432\u0442\u043e\u0440\u0456\u0442\u044c \u043f\u0430\u0440\u043e\u043b\u044c',
-      pw_hint: '\u0411\u0435\u0437 \u043f\u0430\u0440\u043e\u043b\u044f \u0432\u043c\u0456\u0441\u0442 \u043b\u0438\u0448\u0435 \u043f\u0440\u0438\u0445\u043e\u0432\u0443\u0454\u0442\u044c\u0441\u044f (\u0441\u0442\u0438\u0441\u043d\u0435\u043d\u043d\u044f + XOR). \u0426\u0435 \u041d\u0415 \u0437\u0430\u0445\u0438\u0441\u0442, \u0432\u043e\u043d\u043e \u043b\u0438\u0448\u0435 \u0445\u043e\u0432\u0430\u0454 \u0432\u0456\u0434\u043a\u0440\u0438\u0442\u0438\u0439 \u0442\u0435\u043a\u0441\u0442.',
-      kf: '\u0424\u0430\u0439\u043b \u043a\u043b\u044e\u0447\u0430 (\u043d\u0435\u043e\u0431\u043e\u0432\'\u044f\u0437\u043a\u043e\u0432\u043e)', kf_pick: '\u0412\u0438\u0431\u0440\u0430\u0442\u0438 \u0444\u0430\u0439\u043b \u043a\u043b\u044e\u0447\u0430...', kf_hint: '\u0424\u0430\u0439\u043b \u043a\u043b\u044e\u0447\u0430 \u043c\u043e\u0436\u043d\u0430 \u0432\u0438\u043a\u043e\u0440\u0438\u0441\u0442\u043e\u0432\u0443\u0432\u0430\u0442\u0438 \u0437\u0430\u043c\u0456\u0441\u0442\u044c \u043f\u0430\u0440\u043e\u043b\u044f \u0430\u0431\u043e \u0440\u0430\u0437\u043e\u043c \u0456\u0437 \u043d\u0438\u043c (\u0434\u0432\u0430 \u0447\u0438\u043d\u043d\u0438\u043a\u0438). \u0412\u0430\u0436\u043b\u0438\u0432\u0438\u0439 \u0439\u043e\u0433\u043e \u0432\u043c\u0456\u0441\u0442, \u0430 \u043d\u0435 \u043d\u0430\u0437\u0432\u0430.',
-      btn_enc: '\u0417\u0430\u0448\u0438\u0444\u0440\u0443\u0432\u0430\u0442\u0438', btn_dec: '\u0420\u043e\u0437\u0448\u0438\u0444\u0440\u0443\u0432\u0430\u0442\u0438',
-      strength: ['\u0414\u0443\u0436\u0435 \u0441\u043b\u0430\u0431\u043a\u0438\u0439', '\u0421\u043b\u0430\u0431\u043a\u0438\u0439', '\u0417\u0430\u0434\u043e\u0432\u0456\u043b\u044c\u043d\u0438\u0439', '\u0414\u043e\u0431\u0440\u0438\u0439', '\u041d\u0430\u0434\u0456\u0439\u043d\u0438\u0439'],
-      drop_dec: '\u041f\u0435\u0440\u0435\u0442\u044f\u0433\u043d\u0456\u0442\u044c \u0441\u044e\u0434\u0438 \u0444\u0430\u0439\u043b *_decrypt.cmd', pick_dec: '\u0412\u0438\u0431\u0440\u0430\u0442\u0438 *_decrypt.cmd...',
-      pw_dec: '\u041f\u0430\u0440\u043e\u043b\u044c', kf_dec: '\u0424\u0430\u0439\u043b \u043a\u043b\u044e\u0447\u0430',
-      empty: '\u0421\u043f\u043e\u0447\u0430\u0442\u043a\u0443 \u0434\u043e\u0434\u0430\u0439\u0442\u0435 \u043f\u0440\u0438\u043d\u0430\u0439\u043c\u043d\u0456 \u043e\u0434\u0438\u043d \u0444\u0430\u0439\u043b \u0430\u0431\u043e \u043f\u0430\u043f\u043a\u0443.',
-      mismatch: '\u041f\u0430\u0440\u043e\u043b\u0456 \u043d\u0435 \u0437\u0431\u0456\u0433\u0430\u044e\u0442\u044c\u0441\u044f.',
-      nopw_confirm: '\u041d\u0456 \u043f\u0430\u0440\u043e\u043b\u044f, \u043d\u0456 \u0444\u0430\u0439\u043b\u0443 \u043a\u043b\u044e\u0447\u0430: \u0432\u043c\u0456\u0441\u0442 \u0431\u0443\u0434\u0435 \u043b\u0438\u0448\u0435 \u043f\u0440\u0438\u0445\u043e\u0432\u0430\u043d\u043e (\u0446\u0435 \u043d\u0435 \u0431\u0435\u0437\u043f\u0435\u0447\u043d\u043e). \u041f\u0440\u043e\u0434\u043e\u0432\u0436\u0438\u0442\u0438?',
-      limit_enc: '\u041e\u0431\u043c\u0435\u0436\u0435\u043d\u043d\u044f \u0440\u043e\u0437\u043c\u0456\u0440\u0443: \u0437\u0430\u0433\u0430\u043b\u044c\u043d\u0438\u0439 \u0440\u043e\u0437\u043c\u0456\u0440 \u0434\u043e\u0434\u0430\u043d\u0438\u0445 \u0444\u0430\u0439\u043b\u0456\u0432 \u0456 \u043f\u0430\u043f\u043e\u043a \u043d\u0430 \u0446\u0456\u0439 \u0441\u0442\u043e\u0440\u0456\u043d\u0446\u0456 \u043c\u043e\u0436\u0435 \u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0438 \u043f\u0440\u0438\u0431\u043b\u0438\u0437\u043d\u043e 1,5 \u0413\u0411. \u0414\u043b\u044f \u0431\u0456\u043b\u044c\u0448\u0438\u0445 \u0434\u0430\u043d\u0438\u0445 \u0441\u043a\u043e\u0440\u0438\u0441\u0442\u0430\u0439\u0442\u0435\u0441\u044f \u043f\u0440\u043e\u0433\u0440\u0430\u043c\u043e\u044e [[SE]], \u043d\u0430\u043f\u0438\u0441\u0430\u043d\u043e\u044e \u0434\u043b\u044f Windows.',
-      limit_dec: '\u041e\u0431\u043c\u0435\u0436\u0435\u043d\u043d\u044f \u0440\u043e\u0437\u043c\u0456\u0440\u0443: \u0444\u0430\u0439\u043b _decrypt.cmd \u043d\u0430 \u0446\u0456\u0439 \u0441\u0442\u043e\u0440\u0456\u043d\u0446\u0456 \u043c\u043e\u0436\u0435 \u0431\u0443\u0442\u0438 \u043d\u0435 \u0431\u0456\u043b\u044c\u0448\u0438\u043c \u0437\u0430 \u043f\u0440\u0438\u0431\u043b\u0438\u0437\u043d\u043e 1,5 \u0413\u0411. \u0414\u043b\u044f \u0431\u0456\u043b\u044c\u0448\u0438\u0445 \u0444\u0430\u0439\u043b\u0456\u0432 \u0441\u043a\u043e\u0440\u0438\u0441\u0442\u0430\u0439\u0442\u0435\u0441\u044f \u043f\u0440\u043e\u0433\u0440\u0430\u043c\u043e\u044e [[SE]], \u043d\u0430\u043f\u0438\u0441\u0430\u043d\u043e\u044e \u0434\u043b\u044f Windows.',
-      too_big: '\u0426\u0435\u0439 \u0444\u0430\u0439\u043b \u0437\u0430\u0432\u0435\u043b\u0438\u043a\u0438\u0439 \u0434\u043b\u044f \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0430 (\u0437\u0430\u0433\u0430\u043b\u044c\u043d\u0435 \u043e\u0431\u043c\u0435\u0436\u0435\u043d\u043d\u044f \u043f\u0440\u0438\u0431\u043b\u0438\u0437\u043d\u043e 1,5 \u0413\u0411). \u0414\u043b\u044f \u0432\u0435\u043b\u0438\u043a\u0438\u0445 \u0434\u0430\u043d\u0438\u0445 \u0441\u043a\u043e\u0440\u0438\u0441\u0442\u0430\u0439\u0442\u0435\u0441\u044f \u043f\u0440\u043e\u0433\u0440\u0430\u043c\u043e\u044e [[SE]], \u043d\u0430\u043f\u0438\u0441\u0430\u043d\u043e\u044e \u0434\u043b\u044f Windows.',
-      too_big_dec: '\u0426\u0435\u0439 \u0444\u0430\u0439\u043b \u0437\u0430\u0432\u0435\u043b\u0438\u043a\u0438\u0439 \u0434\u043b\u044f \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0430 (\u043e\u0431\u043c\u0435\u0436\u0435\u043d\u043d\u044f \u043f\u0440\u0438\u0431\u043b\u0438\u0437\u043d\u043e 1,5 \u0413\u0411). \u0420\u043e\u0437\u0448\u0438\u0444\u0440\u0443\u0439\u0442\u0435 \u0439\u043e\u0433\u043e \u0437\u0430 \u0434\u043e\u043f\u043e\u043c\u043e\u0433\u043e\u044e [[SE]] \u0443 Windows: \u043a\u043b\u0430\u0446\u043d\u0456\u0442\u044c \u0444\u0430\u0439\u043b \u043f\u0440\u0430\u0432\u043e\u044e \u043a\u043d\u043e\u043f\u043a\u043e\u044e \u043c\u0438\u0448\u0456 \u0442\u0430 \u0432\u0438\u0431\u0435\u0440\u0456\u0442\u044c \u00ab\u0420\u043e\u0437\u0448\u0438\u0444\u0440\u0443\u0432\u0430\u0442\u0438\u00bb \u0430\u0431\u043e \u0432\u0438\u0431\u0435\u0440\u0456\u0442\u044c \u0439\u043e\u0433\u043e \u043d\u0430 \u0432\u043a\u043b\u0430\u0434\u0446\u0456 \u00ab\u0420\u043e\u0437\u0448\u0438\u0444\u0440\u0443\u0432\u0430\u0442\u0438\u00bb \u0443 \u0432\u0456\u043a\u043d\u0456 SecureEncrypt.',
-      elapsed: '\u0427\u0430\u0441: {0}', unit_h: '\u0433\u043e\u0434', unit_m: '\u0445\u0432', unit_s: '\u0441',
-      no_stream: '\u0423 \u0446\u044c\u043e\u043c\u0443 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0456 \u043d\u0435\u043c\u0430\u0454 API \u0441\u0442\u0438\u0441\u043d\u0435\u043d\u043d\u044f (CompressionStream). \u0421\u043a\u043e\u0440\u0438\u0441\u0442\u0430\u0439\u0442\u0435\u0441\u044f \u0430\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e\u044e \u0432\u0435\u0440\u0441\u0456\u0454\u044e Chrome, Edge, Firefox \u0430\u0431\u043e Safari.',
-      no_crypto: 'API \u043a\u0440\u0438\u043f\u0442\u043e\u0433\u0440\u0430\u0444\u0456\u0457 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0430 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0438\u0439. \u0412\u0456\u0434\u043a\u0440\u0438\u0439\u0442\u0435 \u0446\u044e \u0441\u0442\u043e\u0440\u0456\u043d\u043a\u0443 \u0447\u0435\u0440\u0435\u0437 HTTPS (\u0430\u0431\u043e \u044f\u043a \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u0438\u0439 \u0444\u0430\u0439\u043b) \u0432 \u0430\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e\u043c\u0443 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0456.',
-      home: '\u0413\u043e\u043b\u043e\u0432\u043d\u0430',
-      insecure: '\u0426\u044e \u0441\u0442\u043e\u0440\u0456\u043d\u043a\u0443 \u0432\u0456\u0434\u043a\u0440\u0438\u0442\u043e \u0447\u0435\u0440\u0435\u0437 \u043d\u0435\u0437\u0430\u0445\u0438\u0449\u0435\u043d\u0435 \u0437\'\u0454\u0434\u043d\u0430\u043d\u043d\u044f (\u0437\u0432\u0438\u0447\u0430\u0439\u043d\u0438\u0439 http://), \u0442\u043e\u043c\u0443 \u0431\u0440\u0430\u0443\u0437\u0435\u0440 \u0432\u0438\u043c\u043a\u043d\u0443\u0432 \u0448\u0438\u0444\u0440\u0443\u0432\u0430\u043d\u043d\u044f \u0442\u0430 \u0440\u043e\u0437\u0448\u0438\u0444\u0440\u0443\u0432\u0430\u043d\u043d\u044f. \u0412\u0456\u0434\u043a\u0440\u0438\u0439\u0442\u0435 \u0457\u0457 \u0447\u0435\u0440\u0435\u0437 https://, \u044f\u043a http://localhost \u0430\u0431\u043e \u044f\u043a \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u0438\u0439 \u0444\u0430\u0439\u043b.',
-      dir_hint: '\u041a\u043e\u043b\u0438 \u0432\u0438 \u0432\u0438\u0431\u0438\u0440\u0430\u0454\u0442\u0435 \u043f\u0430\u043f\u043a\u0443, \u0431\u0440\u0430\u0443\u0437\u0435\u0440 \u043c\u043e\u0436\u0435 \u043f\u043e\u043f\u0440\u043e\u0441\u0438\u0442\u0438 \u0434\u043e\u0437\u0432\u0456\u043b \u043d\u0430 \u00ab\u0437\u0430\u0432\u0430\u043d\u0442\u0430\u0436\u0435\u043d\u043d\u044f\u00bb. \u0412\u0430\u0448\u0456 \u0444\u0430\u0439\u043b\u0438 \u041d\u0406\u041a\u0423\u0414\u0418 \u043d\u0435 \u0437\u0430\u0432\u0430\u043d\u0442\u0430\u0436\u0443\u044e\u0442\u044c\u0441\u044f: \u0446\u0435\u0439 \u0434\u043e\u0437\u0432\u0456\u043b \u043b\u0438\u0448\u0435 \u0434\u0430\u0454 \u0441\u0442\u043e\u0440\u0456\u043d\u0446\u0456 \u0437\u043c\u043e\u0433\u0443 \u043f\u0440\u043e\u0447\u0438\u0442\u0430\u0442\u0438 \u043f\u0430\u043f\u043a\u0443, \u0449\u043e\u0431 \u0437\u0430\u0448\u0438\u0444\u0440\u0443\u0432\u0430\u0442\u0438 \u0457\u0457 \u043d\u0430 \u0432\u0430\u0448\u043e\u043c\u0443 \u043f\u0440\u0438\u0441\u0442\u0440\u043e\u0457.',
-      skipped: '\u041d\u0415 \u0412\u041a\u041b\u042e\u0427\u0415\u041d\u041e (\u043d\u0435 \u0432\u0434\u0430\u043b\u043e\u0441\u044f \u043f\u0440\u043e\u0447\u0438\u0442\u0430\u0442\u0438; \u043f\u0435\u0440\u0435\u0442\u044f\u0433\u043d\u0443\u0442\u0443 \u043f\u0430\u043f\u043a\u0443, \u044f\u043a\u0443 \u0431\u0440\u0430\u0443\u0437\u0435\u0440 \u043d\u0435 \u043f\u0435\u0440\u0435\u0434\u0430\u0432, \u043c\u043e\u0436\u043d\u0430 \u0434\u043e\u0434\u0430\u0442\u0438 \u0447\u0435\u0440\u0435\u0437 \u00ab\u0414\u043e\u0434\u0430\u0442\u0438 \u043f\u0430\u043f\u043a\u0443...\u00bb): {0}',
-      err_noread: '\u041d\u0435 \u0432\u0434\u0430\u043b\u043e\u0441\u044f \u043f\u0440\u043e\u0447\u0438\u0442\u0430\u0442\u0438 \u0436\u043e\u0434\u043d\u043e\u0433\u043e \u0435\u043b\u0435\u043c\u0435\u043d\u0442\u0430. \u0414\u043b\u044f \u043f\u0430\u043f\u043a\u0438 \u0441\u043a\u043e\u0440\u0438\u0441\u0442\u0430\u0439\u0442\u0435\u0441\u044f \u00ab\u0414\u043e\u0434\u0430\u0442\u0438 \u043f\u0430\u043f\u043a\u0443...\u00bb \u0437\u0430\u043c\u0456\u0441\u0442\u044c \u043f\u0435\u0440\u0435\u0442\u044f\u0433\u0443\u0432\u0430\u043d\u043d\u044f.',
-      working: '\u0422\u0440\u0438\u0432\u0430\u0454 \u043e\u0431\u0440\u043e\u0431\u043a\u0430... (\u043e\u0442\u0440\u0438\u043c\u0430\u043d\u043d\u044f \u043a\u043b\u044e\u0447\u0430 \u043c\u043e\u0436\u0435 \u0437\u0430\u0439\u043d\u044f\u0442\u0438 \u0442\u0440\u043e\u0445\u0438 \u0447\u0430\u0441\u0443)',
-      enc_done: '\u0413\u043e\u0442\u043e\u0432\u043e: \u0435\u043b\u0435\u043c\u0435\u043d\u0442\u0456\u0432 \u2014 {0}, {1} -> {2}. \u0420\u0435\u0436\u0438\u043c: {3}.',
-      mode_aes: 'AES-256-CBC + HMAC-SHA256', mode_xor: '\u043b\u0438\u0448\u0435 \u043f\u0440\u0438\u0445\u043e\u0432\u0443\u0432\u0430\u043d\u043d\u044f (\u0431\u0435\u0437 \u043f\u0430\u0440\u043e\u043b\u044f)',
-      enc_note: '\u0424\u0430\u0439\u043b \u0437\u0430\u043f\u0443\u0441\u043a\u0430\u0454\u0442\u044c\u0441\u044f \u0443 Windows \u043f\u043e\u0434\u0432\u0456\u0439\u043d\u0438\u043c \u043a\u043b\u0430\u0446\u0430\u043d\u043d\u044f\u043c (\u0432\u0456\u043a\u043d\u043e \u0437\u0430\u043f\u0438\u0442\u0430\u0454 \u043f\u0430\u0440\u043e\u043b\u044c) \u0456 \u0432\u0456\u0434\u043a\u0440\u0438\u0432\u0430\u0454\u0442\u044c\u0441\u044f \u0437\u0430 \u0434\u043e\u043f\u043e\u043c\u043e\u0433\u043e\u044e \u0446\u0456\u0454\u0457 \u0441\u0442\u043e\u0440\u0456\u043d\u043a\u0438 \u043d\u0430 \u0431\u0443\u0434\u044c-\u044f\u043a\u043e\u043c\u0443 \u043f\u0440\u0438\u0441\u0442\u0440\u043e\u0457.',
-      dl: '\u0417\u0430\u0432\u0430\u043d\u0442\u0430\u0436\u0438\u0442\u0438', dl_all: '\u0417\u0430\u0432\u0430\u043d\u0442\u0430\u0436\u0438\u0442\u0438 \u0432\u0441\u0435 (ZIP)',
-      sanitized: '\u0417\u043c\u0456\u043d\u0435\u043d\u043e \u043d\u0430\u0437\u0432: {0} \u2014 \u0432\u043e\u043d\u0438 \u043c\u0456\u0441\u0442\u0438\u043b\u0438 \u0441\u0438\u043c\u0432\u043e\u043b\u0438, \u043d\u0435\u0434\u043e\u0437\u0432\u043e\u043b\u0435\u043d\u0456 \u0443 Windows.',
-      dec_info_aes: '\u0417\u0430\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u043e \u0437\u0430 \u0434\u043e\u043f\u043e\u043c\u043e\u0433\u043e\u044e AES-256 (\u0456\u0442\u0435\u0440\u0430\u0446\u0456\u0439: {0}).', dec_info_xor: '\u0411\u0435\u0437 \u043f\u0430\u0440\u043e\u043b\u044f: \u0432\u043c\u0456\u0441\u0442 \u043b\u0438\u0448\u0435 \u043f\u0440\u0438\u0445\u043e\u0432\u0430\u043d\u043e.',
-      dec_need_kf: '\u0414\u043b\u044f \u0446\u044c\u043e\u0433\u043e \u0444\u0430\u0439\u043b\u0443 \u043f\u043e\u0442\u0440\u0456\u0431\u0435\u043d \u0444\u0430\u0439\u043b \u043a\u043b\u044e\u0447\u0430.', dec_need_pw: '\u0414\u043b\u044f \u0446\u044c\u043e\u0433\u043e \u0444\u0430\u0439\u043b\u0443 \u043f\u043e\u0442\u0440\u0456\u0431\u0435\u043d \u043f\u0430\u0440\u043e\u043b\u044c.',
-      dec_ok: '\u0420\u043e\u0437\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u043e: \u0444\u0430\u0439\u043b\u0456\u0432 \u2014 {0}, {1}. \u041f\u0435\u0440\u0435\u0432\u0456\u0440\u043a\u0443 \u0446\u0456\u043b\u0456\u0441\u043d\u043e\u0441\u0442\u0456 \u043f\u0440\u043e\u0439\u0434\u0435\u043d\u043e.',
-      dec_ok_bad: '\u0420\u043e\u0437\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u043e, \u0430\u043b\u0435 \u043f\u0435\u0440\u0435\u0432\u0456\u0440\u043a\u0443 \u0446\u0456\u043b\u0456\u0441\u043d\u043e\u0441\u0442\u0456 (SHA-256) \u041d\u0415 \u041f\u0420\u041e\u0419\u0414\u0415\u041d\u041e. \u0412\u043c\u0456\u0441\u0442 \u043c\u043e\u0436\u0435 \u0431\u0443\u0442\u0438 \u043f\u043e\u0448\u043a\u043e\u0434\u0436\u0435\u043d\u043e \u0430\u0431\u043e \u0437\u043c\u0456\u043d\u0435\u043d\u043e.',
-      err_wrongpw: '\u041d\u0435\u043f\u0440\u0430\u0432\u0438\u043b\u044c\u043d\u0438\u0439 \u043f\u0430\u0440\u043e\u043b\u044c \u0430\u0431\u043e \u0444\u0430\u0439\u043b \u043a\u043b\u044e\u0447\u0430.', err_mac: '\u0424\u0430\u0439\u043b \u043f\u043e\u0448\u043a\u043e\u0434\u0436\u0435\u043d\u043e \u0430\u0431\u043e \u0437\u043c\u0456\u043d\u0435\u043d\u043e (\u0430\u0432\u0442\u0435\u043d\u0442\u0438\u0444\u0456\u043a\u0430\u0446\u0456\u044f \u043d\u0435 \u043f\u0440\u043e\u0439\u0434\u0435\u043d\u0430). \u041d\u0456\u0447\u043e\u0433\u043e \u043d\u0435 \u0440\u043e\u0437\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u043e.',
-      err_format: '\u0426\u0435 \u043d\u0435 \u0434\u0456\u0439\u0441\u043d\u0438\u0439 \u0444\u0430\u0439\u043b SecureEncrypt (\u0430\u0431\u043e \u0439\u043e\u0433\u043e \u043f\u043e\u0448\u043a\u043e\u0434\u0436\u0435\u043d\u043e).', err_path: '\u0424\u0430\u0439\u043b \u043c\u0456\u0441\u0442\u0438\u0442\u044c \u043d\u0435\u0431\u0435\u0437\u043f\u0435\u0447\u043d\u0438\u0439 \u0448\u043b\u044f\u0445 \u0456 \u0431\u0443\u0432 \u0432\u0456\u0434\u0445\u0438\u043b\u0435\u043d\u0438\u0439.',
-      err_needpw: '\u0412\u0432\u0435\u0434\u0456\u0442\u044c \u043f\u0430\u0440\u043e\u043b\u044c (\u0442\u0430/\u0430\u0431\u043e \u0432\u0438\u0431\u0435\u0440\u0456\u0442\u044c \u0444\u0430\u0439\u043b \u043a\u043b\u044e\u0447\u0430).', err_mem: '\u041d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043d\u044c\u043e \u043f\u0430\u043c\'\u044f\u0442\u0456 \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0456 \u0434\u043b\u044f \u0446\u044c\u043e\u0433\u043e \u0444\u0430\u0439\u043b\u0443.', err_other: '\u041f\u043e\u043c\u0438\u043b\u043a\u0430: {0}',
-      about: '\u0426\u044e \u043f\u0440\u043e\u0433\u0440\u0430\u043c\u0443 \u0441\u0442\u0432\u043e\u0440\u0438\u0432 Abdullah ERT\u00dcRK.<br><a href="https://buymeacoffee.com/abdullaherturk" target="_blank" rel="noopener noreferrer">\u041f\u0440\u0438\u0433\u043e\u0441\u0442\u0438\u0442\u0438 \u043a\u0430\u0432\u043e\u044e</a>',
-      foot: '\u0412\u0456\u0434\u043a\u0440\u0438\u0442\u0438\u0439 \u043a\u043e\u0434. \u0421\u0443\u043c\u0456\u0441\u043d\u043e \u0437 SecureEncrypt for Windows (\u0444\u043e\u0440\u043c\u0430\u0442 SEv2).',
-      items: '\u0435\u043b\u0435\u043c\u0435\u043d\u0442\u0456\u0432'
-    },
-    de: {
-      sub: 'AES-256-Verschl\u00fcsselung und -Entschl\u00fcsselung in Ihrem Browser',
-      priv: '<b>Nichts verl\u00e4sst Ihr Ger\u00e4t.</b> Dateien und Passw\u00f6rter werden lokal auf dieser Seite verarbeitet; es werden keinerlei Daten irgendwohin hochgeladen.',
-      tab_enc: 'Verschl\u00fcsseln', tab_dec: 'Entschl\u00fcsseln',
-      drop_enc: 'Dateien oder Ordner hier ablegen', add_files: 'Dateien hinzuf\u00fcgen...', add_dir: 'Ordner hinzuf\u00fcgen...', clear: 'Leeren',
-      pw: 'Passwort (optional)', pw2: 'Passwort wiederholen',
-      pw_hint: 'Ohne Passwort wird der Inhalt nur verborgen (Komprimierung + XOR); das bietet keine Sicherheit, sondern verhindert lediglich, dass Klartext sichtbar ist.',
-      kf: 'Schl\u00fcsseldatei (optional)', kf_pick: 'Schl\u00fcsseldatei ausw\u00e4hlen...', kf_hint: 'Die Schl\u00fcsseldatei kann anstelle eines Passworts oder zusammen mit einem Passwort (Zwei-Faktor-Verfahren) verwendet werden. Entscheidend ist der Inhalt, nicht der Dateiname.',
-      btn_enc: 'Verschl\u00fcsseln', btn_dec: 'Entschl\u00fcsseln',
-      strength: ['Sehr schwach', 'Schwach', 'Mittel', 'Gut', 'Stark'],
-      drop_dec: '*_decrypt.cmd-Datei hier ablegen', pick_dec: '*_decrypt.cmd ausw\u00e4hlen...',
-      pw_dec: 'Passwort', kf_dec: 'Schl\u00fcsseldatei',
-      empty: 'F\u00fcgen Sie zuerst mindestens eine Datei oder einen Ordner hinzu.',
-      mismatch: 'Die beiden Passw\u00f6rter stimmen nicht \u00fcberein.',
-      nopw_confirm: 'Kein Passwort und keine Schl\u00fcsseldatei: Der Inhalt wird nur verborgen (nicht sicher). M\u00f6chten Sie fortfahren?',
-      limit_enc: 'Gr\u00f6\u00dfenbeschr\u00e4nkung: Die Gesamtgr\u00f6\u00dfe der auf dieser Seite hinzugef\u00fcgten Dateien und Ordner darf ungef\u00e4hr 1,5 GB nicht \u00fcberschreiten. F\u00fcr gr\u00f6\u00dfere Datenmengen verwenden Sie die f\u00fcr Windows entwickelte [[SE]]-Anwendung.',
-      limit_dec: 'Gr\u00f6\u00dfenbeschr\u00e4nkung: Die *_decrypt.cmd-Datei darf auf dieser Seite h\u00f6chstens ungef\u00e4hr 1,5 GB gro\u00df sein. F\u00fcr gr\u00f6\u00dfere Dateien verwenden Sie die f\u00fcr Windows entwickelte [[SE]]-Anwendung.',
-      too_big: 'Diese Datei ist f\u00fcr den Browser zu gro\u00df (Gesamtgrenze: ungef\u00e4hr 1,5 GB). F\u00fcr gr\u00f6\u00dfere Datenmengen verwenden Sie die f\u00fcr Windows entwickelte [[SE]]-Anwendung.',
-      too_big_dec: 'Diese Datei ist f\u00fcr den Browser zu gro\u00df (Grenze: ungef\u00e4hr 1,5 GB). Verwenden Sie die f\u00fcr Windows entwickelte [[SE]]-Anwendung: Klicken Sie mit der rechten Maustaste auf die Datei und w\u00e4hlen Sie \u201eEntschl\u00fcsseln\u201c, oder w\u00e4hlen Sie sie auf der Registerkarte \u201eEntschl\u00fcsseln\u201c im SecureEncrypt-Fenster aus.',
-      elapsed: 'Dauer: {0}', unit_h: 'Std.', unit_m: 'Min.', unit_s: 'Sek.',
-      no_stream: 'Die Komprimierungs-API (CompressionStream) ist in diesem Browser nicht verf\u00fcgbar. Bitte verwenden Sie eine aktuelle Version von Chrome, Edge, Firefox oder Safari.',
-      no_crypto: 'Die Verschl\u00fcsselungs-API des Browsers ist nicht verf\u00fcgbar. \u00d6ffnen Sie diese Seite in einem aktuellen Browser \u00fcber HTTPS (oder als lokale Datei).',
-      home: 'Startseite',
-      insecure: 'Da diese Seite \u00fcber eine unsichere Verbindung (unverschl\u00fcsseltes http://) ge\u00f6ffnet wurde, hat der Browser die Verschl\u00fcsselung und Entschl\u00fcsselung deaktiviert. \u00d6ffnen Sie die Seite \u00fcber https://, als http://localhost oder als lokale Datei.',
-      dir_hint: 'Wenn Sie einen Ordner ausw\u00e4hlen, bittet der Browser m\u00f6glicherweise um die Berechtigung zum \u201eHochladen\u201c. Ihre Dateien werden nirgendwohin hochgeladen: Diese Berechtigung erm\u00f6glicht der Seite lediglich, den Ordner zu lesen und die Dateien auf Ihrem Ger\u00e4t zu verschl\u00fcsseln.',
-      skipped: 'NICHT EINBEZOGEN (konnte nicht gelesen werden; ein Ordner, der per Drag-and-drop abgelegt, aber vom Browser nicht \u00fcbermittelt wurde, kann \u00fcber \u201eOrdner hinzuf\u00fcgen...\u201c hinzugef\u00fcgt werden): {0}',
-      err_noread: 'Es konnten keine Elemente gelesen werden. Verwenden Sie f\u00fcr Ordner \u201eOrdner hinzuf\u00fcgen...\u201c, anstatt sie per Drag-and-drop abzulegen.',
-      working: 'Wird verarbeitet... (Die Schl\u00fcsselableitung kann etwas dauern)',
-      enc_done: 'Fertig: {0} Elemente, {1} -> {2}. Modus: {3}.',
-      mode_aes: 'AES-256-CBC + HMAC-SHA256', mode_xor: 'nur verborgen (ohne Passwort)',
-      enc_note: 'Die Datei kann unter Windows per Doppelklick ausgef\u00fchrt (ein Fenster fragt nach dem Passwort) und auf jedem Ger\u00e4t mit dieser Seite ge\u00f6ffnet werden.',
-      dl: 'Herunterladen', dl_all: 'Alles herunterladen (ZIP)',
-      sanitized: 'Bei {0} Namen waren Zeichen enthalten, die Windows nicht zul\u00e4sst; sie wurden ge\u00e4ndert.',
-      dec_info_aes: 'Mit AES-256 verschl\u00fcsselt ({0} Iterationen).', dec_info_xor: 'Kein Passwort: Der Inhalt wurde nur verborgen.',
-      dec_need_kf: 'F\u00fcr diese Datei wird eine Schl\u00fcsseldatei ben\u00f6tigt.', dec_need_pw: 'F\u00fcr diese Datei wird ein Passwort ben\u00f6tigt.',
-      dec_ok: 'Entschl\u00fcsselt: {0} Dateien, {1}. Integrit\u00e4tspr\u00fcfung bestanden.',
-      dec_ok_bad: 'Entschl\u00fcsselt, aber die Integrit\u00e4tspr\u00fcfung (SHA-256) ist FEHLGESCHLAGEN. Der Inhalt k\u00f6nnte besch\u00e4digt oder ver\u00e4ndert worden sein.',
-      err_wrongpw: 'Passwort oder Schl\u00fcsseldatei ist falsch.', err_mac: 'Die Datei ist besch\u00e4digt oder wurde ver\u00e4ndert (Authentifizierung fehlgeschlagen). Es wurde nichts entschl\u00fcsselt.',
-      err_format: 'Dies ist keine g\u00fcltige SecureEncrypt-Datei (oder sie ist besch\u00e4digt).', err_path: 'Die Datei enth\u00e4lt einen unsicheren Pfad und wurde abgewiesen.',
-      err_needpw: 'Geben Sie das Passwort ein (und/oder w\u00e4hlen Sie die Schl\u00fcsseldatei aus).', err_mem: 'F\u00fcr diese Datei ist im Browser nicht gen\u00fcgend Arbeitsspeicher verf\u00fcgbar.', err_other: 'Fehler: {0}',
-      about: 'Diese Anwendung wurde von Abdullah ERT\u00dcRK programmiert.<br><a href="https://buymeacoffee.com/abdullaherturk" target="_blank" rel="noopener noreferrer">Einen Kaffee spendieren</a>',
-      foot: 'Open Source. Kompatibel mit SecureEncrypt for Windows (SEv2-Format).',
-      items: 'Elemente'
-    }
+@@WEBLANG@@
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -1014,6 +853,11 @@ if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
   var encItems = [];                 // { rel, isDir, file, size, mtime }
   var encKf = null, decKf = null, decBuf = null, decMeta = null;
   var urls = [];
+  var GZIP_LIMIT = 3758096384;        // 3.5 GiB, the same limit as GzipLimit in lib.cs
+  var LIMIT = 1.5 * 1073741824;      // above this the data does not fit in memory: large file mode (when the browser can) or a message
+  var decBig = null;                 // the chosen file when it is decrypted piece by piece (large file mode)
+  function dirHint() { $('t_big_dir').classList.toggle('hidden', !decBig); }   // the folder rule matters only when a folder will be asked for
+  var ctl = null;                    // AbortController of the running large file job
 
   function fmt(s) { for (var i = 1; i < arguments.length; i++) s = s.split('{' + (i - 1) + '}').join(String(arguments[i])); return s; }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -1045,6 +889,9 @@ if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
   function reshow() { ['msgEnc', 'msgDec'].forEach(function (id) { var s = shown[id]; if (s) show(id, s.cls, s.fn); }); }
   function busy(which, on) {
     $(which === 'enc' ? 'barEnc' : 'barDec').classList.toggle('hidden', !on);
+    $(which === 'enc' ? 'keepEnc' : 'keepDec').classList.toggle('hidden', !on);
+    // closing or reloading the tab would lose the job (and leave a partly written file in large file mode): let the browser ask first
+    window.onbeforeunload = on ? function (e) { e.preventDefault(); e.returnValue = ''; return ''; } : null;
     var ids = which === 'enc' ? ['btnEncrypt'] : ['btnDecrypt'];
     ids.forEach(function (i) { $(i).disabled = on; });
     lockUi(on);
@@ -1057,7 +904,7 @@ if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
     if (on) {
       locked = [];
       Array.prototype.forEach.call(document.querySelectorAll('button, input, select, textarea'), function (e) {
-        if (!e.disabled) { e.disabled = true; locked.push(e); }
+        if (!e.disabled && !e.classList.contains('keep')) { e.disabled = true; locked.push(e); }
       });
     } else {
       locked.forEach(function (e) { e.disabled = false; });
@@ -1079,7 +926,10 @@ if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
     $('tabEnc').textContent = T.tab_enc; $('tabDec').textContent = T.tab_dec;
     $('t_home').textContent = T.home; $('homeBtn').title = T.home;
     $('t_insecure').textContent = T.insecure; $('t_insecure').classList.toggle('hidden', !!window.isSecureContext);
-    $('t_limit_enc').innerHTML = rich(T.limit_enc); $('t_limit_dec').innerHTML = rich(T.limit_dec);
+    $('t_limit_enc').innerHTML = rich(bigOK() ? T.limit_enc_big : T.limit_enc); $('t_limit_dec').innerHTML = rich(bigOK() ? T.limit_dec_big : T.limit_dec);
+    $('t_big_dir').textContent = T.big_dir_hint; dirHint();
+    $('keepEnc').textContent = T.keep_open; $('keepDec').textContent = T.keep_open;
+    $('btnCancelEnc').textContent = T.cancel; $('btnCancelDec').textContent = T.cancel;
     $('t_dir_hint').textContent = T.dir_hint; $('t_drop_enc').textContent = T.drop_enc; $('btnAddFiles').textContent = T.add_files; $('btnAddDir').textContent = T.add_dir; $('btnClear').textContent = T.clear; $('btnClearDec').textContent = T.clear;
     $('t_pw').textContent = T.pw; $('t_pw2').textContent = T.pw2; $('t_pw_hint').textContent = T.pw_hint;
     $('t_kf').textContent = T.kf; $('btnKfEnc').textContent = T.kf_pick; $('t_kf_hint').textContent = T.kf_hint;
@@ -1148,7 +998,7 @@ if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
   var sizeWarn = false;
   function checkSize() {
     var total = 0; encItems.forEach(function (i) { total += i.size; });
-    if (total > 1.5 * 1073741824) { sizeWarn = true; show('msgEnc', 'bad', function () { return T.too_big; }); }
+    if (total > LIMIT) { sizeWarn = true; if (bigOK()) show('msgEnc', 'info', function () { return T.big_on; }); else show('msgEnc', 'bad', function () { return T.too_big; }); }
     else if (sizeWarn) { sizeWarn = false; show('msgEnc', '', ''); }
   }
   // the input is emptied BEFORE the picker opens (so the same file can be chosen again), never right after the choice:
@@ -1162,7 +1012,7 @@ if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
     $('resEnc').innerHTML = ''; show('msgEnc', '', ''); meter(); renderList();
   };
   $('btnClearDec').onclick = function () {
-    revokeUrls(); decBuf = null; decMeta = null; decKf = null; lastDec = null;
+    revokeUrls(); decBuf = null; decBig = null; decMeta = null; decKf = null; lastDec = null; dirHint();
     $('inDec').value = ''; $('decName').textContent = ''; $('decInfo').innerHTML = '';
     $('pwD').value = ''; $('kfDecName').textContent = ''; $('decPwBox').classList.add('hidden'); $('decKfBox').classList.add('hidden');
     $('btnDecrypt').disabled = true; $('resDec').innerHTML = ''; show('msgDec', '', '');
@@ -1299,14 +1149,17 @@ if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
     var p1 = $('pw1').value, p2 = $('pw2').value;
     if (p1 !== p2) return show('msgEnc', 'warn', function () { return T.mismatch; });
     var total = 0; encItems.forEach(function (i) { total += i.size; });
-    if (total > 1.5 * 1073741824) return show('msgEnc', 'bad', function () { return T.too_big; });
+    var first = encItems[0].rel.split('/')[0], one = !encItems[0].isDir && encItems[0].rel.indexOf('/') < 0;
+    var base = one ? first.replace(/\.[^.]*$/, '') || first : first;
+    var outName = base + '_decrypt.cmd';
+    if (total > LIMIT) {
+      if (!bigOK()) return show('msgEnc', 'bad', function () { return T.too_big; });
+      return bigEncrypt(p1, outName, total);          // the save dialog must open straight from this click
+    }
     if (!p1 && !encKf && !window.confirm(T.nopw_confirm)) return;
 
     busy('enc', true); show('msgEnc', 'info', function () { return T.working; });
     var t0 = Date.now();
-    var first = encItems[0].rel.split('/')[0], one = !encItems[0].isDir && encItems[0].rel.indexOf('/') < 0;
-    var base = one ? first.replace(/\.[^.]*$/, '') || first : first;
-    var outName = base + '_decrypt.cmd';
     var entries = [], skipped = [];
     Promise.all(encItems.map(function (it) {
       if (it.isDir) { entries.push({ rel: it.rel, isDir: true, mtime: it.mtime }); return null; }
@@ -1332,13 +1185,148 @@ if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
   function renderEnc() {
     var r = lastEnc; $('resEnc').innerHTML = '';
     if (!r) return;
-    show('msgEnc', r.mode === 2 ? 'ok' : 'warn', function () {
-      var msg = fmt(T.enc_done, r.n, size(r.total), size(r.len), r.mode === 2 ? T.mode_aes : T.mode_xor) + '\n' + fmt(T.elapsed, dur(r.sec)) + '\n' + T.enc_note;
+    var over4 = r.len >= 4294967296;   // Windows cannot start a .cmd of 4 GB or more by double-click
+    show('msgEnc', r.mode === 2 && !over4 ? 'ok' : 'warn', function () {
+      var msg = fmt(T.enc_done, r.n, size(r.total), size(r.len), r.mode === 2 ? T.mode_aes : T.mode_xor) + '\n' + fmt(T.elapsed, dur(r.sec)) + '\n' + (over4 ? T.enc_note_big : (r.len > LIMIT ? T.enc_note_mid : T.enc_note));
+      if (r.saved) msg += '\n' + fmt(T.big_saved, r.saved);
       if (r.san) msg += '\n' + fmt(T.sanitized, r.san);
       if (r.skipped.length) msg += '\n' + fmt(T.skipped, r.skipped.join(', '));
       return msg;
     });
-    $('resEnc').appendChild(link(r.blob, r.name, T.dl + ': ' + r.name));
+    if (r.blob) $('resEnc').appendChild(link(r.blob, r.name, T.dl + ': ' + r.name));
+  }
+
+  // ------------------------------------------------------------ large files (written straight to disk, piece by piece)
+  // Needs the File System Access API (Chrome, Edge, Opera). Other browsers keep the size limit.
+  function bigOK() {
+    return !!(window.isSecureContext && typeof window.showSaveFilePicker === 'function' && typeof window.showDirectoryPicker === 'function' &&
+      typeof ReadableStream === 'function' && typeof Symbol === 'function' && Symbol.asyncIterator && typeof BigInt === 'function');
+  }
+  // progress of a large job: the bar and a message with the step and the percentage (updated a few times a second)
+  function bigProgress(which, kind) {
+    var msg = which === 'enc' ? 'msgEnc' : 'msgDec', bar = $(which === 'enc' ? 'barEnc' : 'barDec'), last = 0;
+    bar.classList.add('det'); bar.firstChild.style.width = '0';
+    return function (stage, f) {
+      var now = Date.now();
+      if (now - last < 250 && f < 1) return;
+      last = now;
+      var pct = Math.min(100, Math.floor(f * 100));
+      // stage 0: a job with a single step (un-hiding a file that has no password); otherwise two steps, half of the bar each
+      bar.firstChild.style.width = (stage === 0 ? pct : ((stage - 1) * 50) + pct / 2) + '%';
+      show(msg, 'info', function () { return fmt(stage === 0 ? T.big_one_dec : T['big_s' + stage + '_' + kind], pct); });
+    };
+  }
+  function bigStart(which) {
+    ctl = new AbortController();
+    busy(which, true);
+    var b = $(which === 'enc' ? 'btnCancelEnc' : 'btnCancelDec'); b.classList.remove('hidden'); b.disabled = false;
+    b.onclick = function () { b.disabled = true; if (ctl) ctl.abort(); };
+  }
+  function bigEnd(which) {
+    ctl = null;
+    $(which === 'enc' ? 'btnCancelEnc' : 'btnCancelDec').classList.add('hidden');
+    var bar = $(which === 'enc' ? 'barEnc' : 'barDec'); bar.classList.remove('det'); bar.firstChild.style.width = '';
+    busy(which, false);
+  }
+  function bigErr(e) {
+    if (e && e.code === 'ABORT') return T.big_cancelled;
+    if (e && e.code === 'CHANGED') return T.big_changed;
+    return errText(e);
+  }
+  function isPickerCancel(e) { return e && e.name === 'AbortError'; }
+
+  function bigEncrypt(p1, outName, total) {
+    var t0, fname = outName, handle = null, wasEmpty = false, finished = false;
+    window.showSaveFilePicker({ suggestedName: outName, types: [{ description: 'SecureEncrypt', accept: { 'application/octet-stream': ['.cmd'] } }] }).then(function (fh) {
+      fname = fh.name; handle = fh;
+      // the picker creates an empty file at once; remember if it was empty so it can be removed again on a cancel or an error
+      // (a file that already had content is never touched: Chrome keeps it until the new data is complete)
+      return fh.getFile().then(function (f) { wasEmpty = f.size === 0; }, function () { }).then(function () { return fh.createWritable(); }).then(function (w) {
+        bigStart('enc'); t0 = Date.now();
+        // like the Windows program: above 3.5 GiB nothing is compressed, because the GZip of .NET 2.0 / 3.5 (Windows 7) cannot unpack more than 4 GB
+        var allPacked = encItems.every(function (i) { return i.isDir || COMPRESSED.test(i.rel); }) || total >= GZIP_LIMIT;
+        var items = encItems.map(function (it) {
+          return { rel: it.rel, isDir: it.isDir, mtime: it.mtime, size: it.size, open: function () { return it.file.stream(); } };
+        });
+        return head().then(function (h) {
+          return SEcore.encodeStream({ items: items, password: p1, keyfile: encKf, gzip: !allPacked, head: h, signal: ctl.signal,
+            progress: bigProgress('enc', 'enc'), sink: { write: function (u) { return w.write(u); } } });
+        }).then(function (r) {
+          return w.close().then(function () { return r; });
+        }, function (e) {
+          return w.abort().catch(function () { }).then(function () { throw e; });
+        });
+      });
+    }).then(function (r) {
+      lastEnc = { blob: null, saved: fname, name: outName, n: r.n, total: total, len: r.len, mode: r.mode, san: sanitizedCount, skipped: [], sec: (Date.now() - t0) / 1000 };
+      sanitizedCount = 0; finished = true;
+      bigEnd('enc'); renderEnc();
+    }).catch(function (e) {
+      var rm = !finished && handle && wasEmpty && handle.remove ? handle.remove().catch(function () { }) : Promise.resolve();
+      return rm.then(function () {
+        if (isPickerCancel(e) && !ctl) return;
+        if (ctl) bigEnd('enc');
+        show('msgEnc', e && e.code === 'ABORT' ? 'warn' : 'bad', function () { return bigErr(e); });
+      });
+    });
+  }
+
+  // the files go straight into the folder the user chooses (sub folders of the archive are created inside it); a file that
+  // already exists is never overwritten: the new one gets " (2)", " (3)" ... added to its name
+  function bigDecrypt(pw) {
+    var t0, root = null, files = [], created = [], createdDirs = [], res = null;
+    function exists(dir, name) {
+      return dir.getFileHandle(name).then(function () { return true; }, function (e) { return !(e && e.name === 'NotFoundError'); });
+    }
+    function freeName(dir, name) {
+      var dot = name.lastIndexOf('.'), base = dot > 0 ? name.slice(0, dot) : name, ext = dot > 0 ? name.slice(dot) : '';
+      function tryN(i) {
+        var n = i > 1 ? base + ' (' + i + ')' + ext : name;
+        return exists(dir, n).then(function (x) { return x ? tryN(i + 1) : n; });
+      }
+      return tryN(1);
+    }
+    function subdir(h, p) {
+      return h.getDirectoryHandle(p).then(function (d) { return d; }, function (e) {
+        if (!(e && e.name === 'NotFoundError')) throw e;
+        return h.getDirectoryHandle(p, { create: true }).then(function (d) { createdDirs.push({ parent: h, name: p }); return d; });
+      });
+    }
+    // after a failure or a cancel: take away what this run created (files first, then the folders that are empty again)
+    function cleanup() {
+      var p = Promise.resolve();
+      created.forEach(function (c) { p = p.then(function () { return c.dir.removeEntry(c.name); }).catch(function () { }); });
+      createdDirs.slice().reverse().forEach(function (c) { p = p.then(function () { return c.parent.removeEntry(c.name); }).catch(function () { }); });
+      return p;
+    }
+    window.showDirectoryPicker({ mode: 'readwrite', id: 'secureencrypt' }).then(function (dir) {
+      root = dir; bigStart('dec'); t0 = Date.now();
+      return SEcore.decodeStream({ blob: decBig, password: pw, keyfile: decKf, signal: ctl.signal, progress: bigProgress('dec', 'dec'),
+        entry: function (info) {
+          var parts = info.rel.split('/'), last = info.isDir ? parts.length : parts.length - 1, d = Promise.resolve(root);
+          parts.slice(0, last).forEach(function (p) { d = d.then(function (h) { return subdir(h, p); }); });
+          if (info.isDir) return d.then(function () { files.push({ rel: info.rel, isDir: true, size: 0 }); });
+          return d.then(function (h) {
+            return freeName(h, parts[last]).then(function (n) {
+              return h.getFileHandle(n, { create: true }).then(function (fh) { created.push({ dir: h, name: n }); return fh.createWritable(); }).then(function (w) {
+                files.push({ rel: parts.slice(0, last).concat(n).join('/'), isDir: false, size: info.size });
+                return { write: function (u) { return w.write(u); }, close: function () { return w.close(); }, abort: function () { return w.abort(); } };
+              });
+            });
+          });
+        } });
+    }).then(function (r) {
+      res = r;
+      lastDec = { files: files, tot: r.total, nf: r.n, shaOk: r.shaOk, zip: null, big: true, bigDir: String(root.name || '').replace(/[\\\/]+/g, ''), sec: (Date.now() - t0) / 1000 };
+      bigEnd('dec'); renderDec();
+    }).catch(function (e) {
+      if (res) { if (ctl) bigEnd('dec'); return; }           // the files are written; only showing the result failed: keep them
+      if (isPickerCancel(e) && !ctl) return;
+      return cleanup().then(function () {
+        if (ctl) bigEnd('dec');
+        show('msgDec', e && e.code === 'ABORT' ? 'warn' : 'bad', function () { return bigErr(e); });
+      });
+    });
   }
 
   // ------------------------------------------------------------ decrypt
@@ -1350,11 +1338,17 @@ if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
     $('decKfBox').classList.toggle('hidden', !m.usesKf);
   }
   function loadDec(file) {
-    revokeUrls(); lastDec = null; $('resDec').innerHTML = ''; show('msgDec', '', ''); decMeta = null; decBuf = null;
+    revokeUrls(); lastDec = null; $('resDec').innerHTML = ''; show('msgDec', '', ''); decMeta = null; decBuf = null; decBig = null; dirHint();
     $('decInfo').innerHTML = ''; $('btnDecrypt').disabled = true;
     $('decName').textContent = file.name + ' (' + size(file.size) + ')';
-    // the whole file is read into memory: say clearly why a very large file cannot be used here
-    if (file.size > 1.5 * 1073741824) { show('msgDec', 'bad', function () { return T.too_big_dec; }); return; }
+    if (file.size > LIMIT) {
+      // too large for memory: with the File System Access API it is decrypted piece by piece, otherwise say why it cannot be used here
+      if (!bigOK()) { show('msgDec', 'bad', function () { return T.too_big_dec; }); return; }
+      SEcore.inspectBlob(file).then(function (m) {
+        decMeta = m; decBig = file; dirHint(); decInfo(); $('btnDecrypt').disabled = false;
+      }).catch(function (e) { show('msgDec', 'bad', function () { return errText(e); }); });
+      return;
+    }
     file.arrayBuffer().then(function (b) {
       var u8 = new Uint8Array(b);
       decMeta = SEcore.inspect(u8); decBuf = u8; decInfo(); $('btnDecrypt').disabled = false;
@@ -1364,9 +1358,14 @@ if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
   $('inDec').onchange = function () { if (this.files[0]) loadDec(this.files[0]); };
 
   $('btnDecrypt').onclick = function () {
-    if (!decBuf) return;
+    if (!decBuf && !decBig) return;
     if (cryptoMissing()) return show('msgDec', 'bad', cryptoMissing);
     if (!hasStreams()) return show('msgDec', 'bad', function () { return T.no_stream; });
+    if (decBig) {
+      if (decMeta.mode === 2 && !$('pwD').value && !decKf) return show('msgDec', 'warn', function () { return T.err_needpw; });
+      revokeUrls(); lastDec = null; $('resDec').innerHTML = ''; show('msgDec', '', '');
+      return bigDecrypt($('pwD').value);          // the folder dialog must open straight from this click
+    }
     revokeUrls(); lastDec = null; $('resDec').innerHTML = ''; show('msgDec', 'info', function () { return T.working; }); busy('dec', true);
     var t0 = Date.now();
     SEcore.decode(decBuf, $('pwD').value, decKf).then(function (r) {
@@ -1380,16 +1379,16 @@ if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
   function renderDec() {
     var d = lastDec; $('resDec').innerHTML = '';
     if (!d) return;
-    show('msgDec', d.shaOk ? 'ok' : 'warn', function () { return (d.shaOk ? fmt(T.dec_ok, d.nf, size(d.tot)) : T.dec_ok_bad) + '\n' + fmt(T.elapsed, dur(d.sec)); });
+    show('msgDec', d.shaOk ? 'ok' : 'warn', function () { return (d.shaOk ? fmt(T.dec_ok, d.nf, size(d.tot)) : T.dec_ok_bad) + '\n' + fmt(T.elapsed, dur(d.sec)) + (d.bigDir ? '\n' + fmt(T.big_saved_dir, d.bigDir) : ''); });
     var ul = document.createElement('ul'); ul.className = 'list'; ul.style.maxHeight = '320px';
     d.files.forEach(function (f) {
       var li = document.createElement('li');
       li.innerHTML = '<span aria-hidden="true">' + (f.isDir ? '&#128193;' : '&#128196;') + '</span><span class="nm">' + esc(f.rel) + '</span><span class="sz">' + (f.isDir ? '' : size(f.size)) + '</span>';
-      if (!f.isDir) li.appendChild(link(new Blob([f.data], { type: 'application/octet-stream' }), f.rel.split('/').pop(), T.dl));
+      if (!f.isDir && f.data) li.appendChild(link(new Blob([f.data], { type: 'application/octet-stream' }), f.rel.split('/').pop(), T.dl));
       ul.appendChild(li);
     });
     $('resDec').appendChild(ul);
-    if (d.files.length > 1 && d.tot < 3.5 * 1073741824) {
+    if (!d.big && d.files.length > 1 && d.tot < 3.5 * 1073741824) {
       if (!d.zip) d.zip = new Blob(SEcore.zip(d.files), { type: 'application/zip' });
       var z = document.createElement('div'); z.className = 'row';
       z.appendChild(link(d.zip, 'SecureEncrypt_decrypted.zip', T.dl_all));

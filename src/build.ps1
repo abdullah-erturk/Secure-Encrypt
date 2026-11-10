@@ -11,8 +11,10 @@
 #       ext\          optional Windows 11 context menu entry: COM server, icon / package builder, package manifest
 #       shim.js.txt   right-click helper (multi selection -> one window; JScript source, stored as .txt)
 #   Usage:  powershell -File src\build.ps1 [output path]
-param([string]$Out = (Join-Path (Split-Path -Parent $PSScriptRoot) 'SecureEncrypt.cmd'), [switch]$NoPause)
+param([string]$Out = '', [switch]$NoPause)
 $ErrorActionPreference = 'Stop'
+# default output: SecureEncrypt.cmd next to src\ ($PSScriptRoot does not exist in scripts of PowerShell 2.0 / Windows 7, so $MyInvocation is used)
+if (-not $Out) { $Out = Join-Path (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)) 'SecureEncrypt.cmd' }
 
 # Keeps the window open when the script was started by double-click / "Run with PowerShell" (parent = Explorer),
 # so the messages can be read. From a terminal it returns immediately. -NoPause disables it.
@@ -50,7 +52,11 @@ try {
     $launcher = ReadSrc 'launcher.bat'
     # lib.cs is shrunk (no comment lines, no indentation) because a copy travels inside every *_decrypt.cmd
     $lib      = (ReadSrc 'lib.cs') -replace '(?m)^\s*//.*\r?\n', '' -replace '(?m)^[ ]+', ''
-    $gui      = (ReadSrc 'gui.cs') -replace '(?m)^\s*//.*\r?\n', '' -replace '(?m)^[ ]+', ''
+    # the program version lives only in engine.ps1 ($Version = 'x.y'); the window code gets it where it says @@VERSION@@
+    $verMatch = [regex]::Match($engine, "(?m)^\`$Version\s*=\s*'([^']+)'")
+    if (-not $verMatch.Success) { throw 'engine.ps1: $Version not found' }
+    $progVer  = $verMatch.Groups[1].Value
+    $gui      = ((ReadSrc 'gui.cs') -replace '(?m)^\s*//.*\r?\n', '' -replace '(?m)^[ ]+', '').Replace('@@VERSION@@', $progVer)
     $dec      = ReadSrc 'dec.ps1'
     $stub     = ReadSrc 'stub.bat'
     $shim     = ReadSrc 'shim.js.txt'
@@ -177,6 +183,118 @@ try {
         $gz.Write($headBytes, 0, $headBytes.Length); $gz.Close()
         $headB64 = [Convert]::ToBase64String($ms.ToArray())
         $tpl = [IO.File]::ReadAllText($tplPath, [Text.Encoding]::UTF8)
+
+        # ---- web page texts: src\web\web_lang\<code>.ini -> the TXT object and the language list of the page
+        # (en.ini is the base: it fixes the key order, and missing keys of other languages fall back to it)
+        $wlDir = Join-Path $d 'web\web_lang'
+        if (-not (Test-Path -LiteralPath (Join-Path $wlDir 'en.ini'))) { throw "Missing web language file: $wlDir\en.ini (English is the base language)" }
+        $WebLangs = @{}
+        foreach ($f in @(Get-ChildItem -LiteralPath $wlDir -Filter '*.ini' | Sort-Object Name)) {
+            $code = $f.BaseName.ToLower()
+            if ($code -notmatch '^[a-z]{2,8}(-[a-z0-9]{2,8})?$') { throw "Bad web language file name '$($f.Name)' (use a language code such as en.ini, tr.ini, de.ini)" }
+            $o = New-Object System.Collections.Specialized.OrderedDictionary
+            $n = 0
+            foreach ($line in [IO.File]::ReadAllLines($f.FullName, [Text.Encoding]::UTF8)) {
+                $n++
+                $l = $line.Trim()
+                if ($l.Length -eq 0 -or $l.StartsWith(';') -or $l.StartsWith('#')) { continue }
+                $i = $l.IndexOf('=')
+                if ($i -lt 1) { throw "web_lang\$($f.Name) line ${n}: expected 'key = value'" }
+                $key = $l.Substring(0, $i).Trim()
+                $val = $l.Substring($i + 1).Trim()
+                if ($key -notmatch '^[A-Za-z0-9_]+$') { throw "web_lang\$($f.Name) line ${n}: bad key '$key' (letters, digits and _ only)" }
+                if ($val.Length -ge 2 -and $val.StartsWith('"') -and $val.EndsWith('"')) { $val = $val.Substring(1, $val.Length - 2) }
+                if ($o.Contains($key)) { throw "web_lang\$($f.Name) line ${n}: key '$key' appears twice" }
+                $o[$key] = $val
+            }
+            if (-not $o.Contains('lang_name')) { throw "web_lang\$($f.Name): missing 'lang_name = ...' (the name shown in the language list)" }
+            $WebLangs[$code] = $o
+        }
+        function JsStr($s) {
+            $b = New-Object Text.StringBuilder
+            [void]$b.Append("'")
+            foreach ($ch in $s.ToCharArray()) {
+                if ($ch -eq '\') { [void]$b.Append('\\') }
+                elseif ($ch -eq "'") { [void]$b.Append("\'") }
+                elseif ([int]$ch -gt 126 -or [int]$ch -lt 32) { [void]$b.Append(('\u{0:x4}' -f [int]$ch)) }
+                else { [void]$b.Append($ch) }
+            }
+            [void]$b.Append("'")
+            return $b.ToString()
+        }
+        $wlBase = $WebLangs['en']
+        $wlOrder = @('en') + @($WebLangs.Keys | Where-Object { $_ -ne 'en' } | Sort-Object)
+        $wlText = New-Object Text.StringBuilder
+        $wlOpts = New-Object Text.StringBuilder
+        Write-Host '  web languages:'
+        foreach ($code in $wlOrder) {
+            $o = $WebLangs[$code]
+            $missing = @($wlBase.Keys | Where-Object { $_ -ne 'lang_name' -and -not $o.Contains($_) })
+            $extra = @($o.Keys | Where-Object { -not $wlBase.Contains($_) })
+            $msg = '    {0,-6} {1,3} texts' -f $code, ($o.Count - 1)
+            if ($missing.Count -gt 0) { $msg += "   missing $($missing.Count) (English is used): " + (($missing | Select-Object -First 5) -join ', ') + $(if ($missing.Count -gt 5) { ' ...' }) }
+            if ($extra.Count -gt 0) { $msg += "   unknown keys ignored by the page: " + (($extra | Select-Object -First 5) -join ', ') }
+            Write-Host $msg
+            $items = New-Object Collections.ArrayList
+            foreach ($k in $wlBase.Keys) {
+                if ($k -eq 'lang_name') { continue }
+                $v = $(if ($o.Contains($k)) { $o[$k] } else { $wlBase[$k] })
+                if ($k -eq 'strength') {
+                    $parts = @($v.Split('|') | ForEach-Object { $_.Trim() })
+                    if ($parts.Count -ne 5) { throw "web_lang\$code.ini: 'strength' needs exactly five words separated by |" }
+                    [void]$items.Add("      $k`: [" + (($parts | ForEach-Object { JsStr $_ }) -join ', ') + ']')
+                } else {
+                    [void]$items.Add("      $k`: " + (JsStr $v))
+                }
+            }
+            [void]$wlText.Append("    $code`: {`n" + ($items -join ",`n") + "`n    }")
+            if ($code -ne $wlOrder[-1]) { [void]$wlText.Append(",`n") }
+            $label = New-Object Text.StringBuilder
+            foreach ($ch in $o['lang_name'].ToCharArray()) {
+                if ([int]$ch -gt 126) { [void]$label.Append(('&#{0};' -f [int]$ch)) }
+                elseif ($ch -eq '<') { [void]$label.Append('&lt;') }
+                elseif ($ch -eq '&') { [void]$label.Append('&amp;') }
+                else { [void]$label.Append($ch) }
+            }
+            [void]$wlOpts.Append("<option value=`"$code`">" + $label.ToString() + '</option>')
+        }
+        $tpl = $tpl.Replace('@@WEBLANG@@', $wlText.ToString()).Replace('@@LANGOPTS@@', $wlOpts.ToString())
+
+        # ---- the SHA-256 rounds of the browser version, written out (all 64, constant indexes and constants): about 1.5x
+        # faster in JavaScript than a loop. The rotation of the eight variables is done by renaming them from round to round.
+        function Emit-Sha256Blocks {
+            $K = ('428a2f98 71374491 b5c0fbcf e9b5dba5 3956c25b 59f111f1 923f82a4 ab1c5ed5 d807aa98 12835b01 243185be 550c7dc3 72be5d74 80deb1fe 9bdc06a7 c19bf174 ' +
+                  'e49b69c1 efbe4786 0fc19dc6 240ca1cc 2de92c6f 4a7484aa 5cb0a9dc 76f988da 983e5152 a831c66d b00327c8 bf597fc7 c6e00bf3 d5a79147 06ca6351 14292967 ' +
+                  '27b70a85 2e1b2138 4d2c6dfc 53380d13 650a7354 766a0abb 81c2c92e 92722c85 a2bfe8a1 a81a664b c24b8b70 c76c51a3 d192e819 d6990624 f40e3585 106aa070 ' +
+                  '19a4c116 1e376c08 2748774c 34b0bcb5 391c0cb3 4ed8aa4a 5b9cca4f 682e6ff3 748f82ee 78a5636f 84c87814 8cc70208 90befffa a4506ceb bef9a3f7 c67178f2').Split(' ')
+            if ($K.Count -ne 64) { throw 'SHA-256 constants: expected 64 values' }
+            $n = 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'hh'
+            $sb = New-Object Text.StringBuilder
+            $nl = "`n"
+            [void]$sb.Append('    var h0 = h[0], h1 = h[1], h2 = h[2], h3 = h[3], h4 = h[4], h5 = h[5], h6 = h[6], h7 = h[7], i, x, y, t, a, b, c, d, e, f, g, hh;' + $nl)
+            [void]$sb.Append('    while (o < end) {' + $nl)
+            [void]$sb.Append('      for (i = 0; i < 16; i++, o += 4) w[i] = (p[o] << 24) | (p[o + 1] << 16) | (p[o + 2] << 8) | p[o + 3];' + $nl)
+            for ($i = 16; $i -lt 64; $i++) {
+                [void]$sb.Append(('      x = w[{0}]; y = w[{1}]; w[{2}] = (w[{3}] + (((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3)) + w[{4}] + (((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10))) | 0;' -f ($i - 15), ($i - 2), $i, ($i - 16), ($i - 7)) + $nl)
+            }
+            [void]$sb.Append('      a = h0; b = h1; c = h2; d = h3; e = h4; f = h5; g = h6; hh = h7;' + $nl)
+            for ($r = 0; $r -lt 64; $r++) {
+                $q = $r % 8
+                $A = $n[(8 - $q) % 8]; $B = $n[(9 - $q) % 8]; $C = $n[(10 - $q) % 8]; $D = $n[(11 - $q) % 8]
+                $E = $n[(12 - $q) % 8]; $F = $n[(13 - $q) % 8]; $G = $n[(14 - $q) % 8]; $H = $n[(15 - $q) % 8]
+                $s1 = "(((${E} >>> 6) | (${E} << 26)) ^ ((${E} >>> 11) | (${E} << 21)) ^ ((${E} >>> 25) | (${E} << 7)))"
+                $s0 = "(((${A} >>> 2) | (${A} << 30)) ^ ((${A} >>> 13) | (${A} << 19)) ^ ((${A} >>> 22) | (${A} << 10)))"
+                $ch = "(${G} ^ (${E} & (${F} ^ ${G})))"
+                $mj = "((${A} & ${B}) | (${C} & (${A} | ${B})))"
+                [void]$sb.Append("      t = (${H} + $s1 + $ch + 0x$($K[$r]) + w[$r]) | 0; ${D} = (${D} + t) | 0; ${H} = (t + $s0 + $mj) | 0;" + $nl)
+            }
+            [void]$sb.Append('      h0 = (h0 + a) | 0; h1 = (h1 + b) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0; h4 = (h4 + e) | 0; h5 = (h5 + f) | 0; h6 = (h6 + g) | 0; h7 = (h7 + hh) | 0;' + $nl)
+            [void]$sb.Append('    }' + $nl)
+            [void]$sb.Append('    h[0] = h0; h[1] = h1; h[2] = h2; h[3] = h3; h[4] = h4; h[5] = h5; h[6] = h6; h[7] = h7;')
+            return $sb.ToString()
+        }
+        $tpl = $tpl.Replace('@@SHA256_BLOCKS@@', (Emit-Sha256Blocks))
+
         $webOut = Join-Path (Split-Path -Parent $Out) 'web\index.html'
         [void][IO.Directory]::CreateDirectory((Split-Path -Parent $webOut))
         [IO.File]::WriteAllText($webOut, $tpl.Replace('@@HEAD@@', $headB64), (New-Object Text.UTF8Encoding($false)))

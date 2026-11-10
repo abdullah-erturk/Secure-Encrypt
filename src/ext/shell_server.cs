@@ -14,9 +14,9 @@ using System.Reflection;
 [assembly: AssemblyCompany("Abdullah ERTÜRK")]
 [assembly: AssemblyProduct("SecureEncrypt")]
 [assembly: AssemblyCopyright("Open source - Abdullah ERTÜRK - github.com/abdullah-erturk - erturk-dev.netlify.app")]
-[assembly: AssemblyVersion("7.0.0.0")]
-[assembly: AssemblyFileVersion("7.0.0.0")]
-[assembly: AssemblyInformationalVersion("7.0 -open source: github.com/abdullah-erturk - erturk-dev.netlify.app")]
+[assembly: AssemblyVersion("8.0.0.0")]
+[assembly: AssemblyFileVersion("8.0.0.0")]
+[assembly: AssemblyInformationalVersion("8.0 -open source: github.com/abdullah-erturk - erturk-dev.netlify.app")]
 
 namespace SEShell
 {

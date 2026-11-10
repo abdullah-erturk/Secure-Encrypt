@@ -4,7 +4,7 @@ $SelfPath = $env:SE_SELF
 # itself (PowerShell has read the whole file by now).
 if ($env:SE_DETACHED -eq '1') { try { Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue } catch { } }
 $script:RunItems = @()
-$Version = '7.0'
+$Version = '8.0'
 # ---------------------------------------------------------------- texts
 # The texts live in src\lang\*.ini; build.ps1 embeds them as $LangData (language code -> key -> text).
 # Keys that a language lacks fall back to English. The same block is in engine.ps1 and dec.ps1.
@@ -311,7 +311,7 @@ function Add-ModernMenu {
         $mf = Join-Path $work 'app.manifest'
         $mfText = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' + "`r`n" +
             '<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">' + "`r`n" +
-            '  <assemblyIdentity version="7.0.0.0" processorArchitecture="*" name="SecureEncrypt.ShellServer" type="win32" />' + "`r`n" +
+            '  <assemblyIdentity version="8.0.0.0" processorArchitecture="*" name="SecureEncrypt.ShellServer" type="win32" />' + "`r`n" +
             '  <description>SecureEncrypt Windows 11 context menu handler</description>' + "`r`n" +
             '  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3"><security><requestedPrivileges><requestedExecutionLevel level="asInvoker" uiAccess="false" /></requestedPrivileges></security></trustInfo>' + "`r`n" +
             '  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1"><application>' + "`r`n" +
