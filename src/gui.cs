@@ -25,6 +25,10 @@ namespace SE.UI
         public static volatile bool LastOk;
         internal static Exception Failure;
 
+        // first character of a result line: warning colour / error colour (see GlassForm.FillSummary)
+        public const string MarkWarn = "\u0001";
+        public const string MarkBad = "\u0002";
+
         // PowerShell 2.0 cannot assign through the generic dictionary indexer
         public static void Put(string k, string v) { S[k] = v; }
 
@@ -234,7 +238,7 @@ namespace SE.UI
         internal static void ShowAbout(IWin32Window owner)
         {
             Form d = new Form();
-            d.Text = T("g_about");
+            d.Text = "SecureEncrypt v@@VERSION@@ - " + T("g_about");
             d.FormBorderStyle = FormBorderStyle.FixedDialog;
             d.StartPosition = FormStartPosition.CenterParent;
             d.MaximizeBox = false; d.MinimizeBox = false; d.ShowInTaskbar = false;
@@ -1019,7 +1023,7 @@ namespace SE.UI
         protected Control tabBar;               // disabled while the work page is shown
         protected GlowBar bar;
         protected Label status;
-        protected TextBox summary;
+        protected RichTextBox summary;
         protected FlatButton btnOpen, btnStop, btnLang;
         internal bool busy;
         protected string openTarget;
@@ -1076,8 +1080,8 @@ namespace SE.UI
             status.BackColor = Color.Transparent; status.ForeColor = Theme.Text; status.Font = Theme.Bold;
             bar = new GlowBar();
             bar.SetBounds(18, 46, clientW - 76, 10);
-            summary = new TextBox();
-            summary.Multiline = true; summary.ReadOnly = true; summary.ScrollBars = ScrollBars.Vertical;
+            summary = new RichTextBox();
+            summary.ReadOnly = true; summary.ScrollBars = RichTextBoxScrollBars.Vertical; summary.DetectUrls = false;
             summary.BorderStyle = BorderStyle.None;
             summary.BackColor = Theme.Field; summary.ForeColor = Theme.Text; summary.Font = Theme.Small;
             summary.SetBounds(18, 72, clientW - 76, ph - 62 - 90);
@@ -1284,6 +1288,28 @@ namespace SE.UI
             Core.ConflictSink = null;
         }
 
+        // fills the result box line by line: a line that starts with Ui.MarkWarn is shown in the warning colour, one that
+        // starts with Ui.MarkBad in the error colour (the marker itself is not shown); the rest in the normal text colour
+        private void FillSummary(string text)
+        {
+            summary.Clear();
+            string[] lines = text.Replace("\r\n", "\n").TrimEnd('\n').Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i];
+                Color col = Theme.Text;
+                if (line.StartsWith(Ui.MarkWarn)) { col = Theme.Warn; line = line.Substring(1); }
+                else if (line.StartsWith(Ui.MarkBad)) { col = Theme.Danger; line = line.Substring(1); }
+                summary.SelectionStart = summary.TextLength;
+                summary.SelectionLength = 0;
+                summary.SelectionColor = col;
+                summary.AppendText(i < lines.Length - 1 ? line + "\n" : line);
+            }
+            summary.SelectionStart = 0;
+            summary.SelectionLength = 0;
+            summary.ScrollToCaret();
+        }
+
         // called on the UI thread when the worker has finished
         internal void ShowResult(bool ok, string statusText, string summaryText, string target)
         {
@@ -1292,7 +1318,7 @@ namespace SE.UI
             bar.Value = ok ? 100 : bar.Value;
             status.ForeColor = ok ? Theme.Ok : Theme.Danger;
             status.Text = statusText;
-            if (summaryText != null && summaryText.Length > 0) { summary.Text = summaryText; summary.Visible = true; }
+            if (summaryText != null && summaryText.Length > 0) { FillSummary(summaryText); summary.Visible = true; }
             btnOpen.Visible = target != null;
             btnStop.Text = Ui.T("g_close");
             btnStop.Enabled = true;
@@ -1651,10 +1677,10 @@ namespace SE.UI
                 string mode = secret == null ? Ui.T("mode1") : Ui.T("mode2");
                 mode += ", " + (gzip ? Ui.T("comp_on") : Ui.T("comp_off"));
                 sb.AppendLine(Ui.TF("mode_label", mode, null));
-                for (int i = 0; i < Core.Skipped.Count; i++) sb.AppendLine(Ui.TF("skipped", Core.Skipped[i], null));
+                for (int i = 0; i < Core.Skipped.Count; i++) sb.AppendLine(Ui.MarkWarn + Ui.TF("skipped", Core.Skipped[i], null));
                 if (delMode > 0) sb.AppendLine(Ui.T("verified"));
                 sb.AppendLine(Ui.TF("out_info", outCmd, Ui.FmtSize(Core.LastOutSize)));
-                if (Core.LastOutSize >= 4294967296L) sb.AppendLine(Ui.T("big_warn"));
+                if (Core.LastOutSize >= 4294967296L) sb.AppendLine(Ui.MarkWarn + Ui.T("big_warn"));
                 sb.AppendLine(Ui.TF("elapsed", Ui.FmtDuration(sw.Elapsed.TotalSeconds), null));
 
                 if (delMode > 0)
@@ -1662,7 +1688,7 @@ namespace SE.UI
                     bool inside = false;
                     for (int i = 0; i < items.Length; i++)
                         if (Directory.Exists(items[i]) && outCmd.StartsWith(items[i].TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase)) inside = true;
-                    if (inside || Core.Skipped.Count > 0) sb.AppendLine(Ui.T("del_skip"));
+                    if (inside || Core.Skipped.Count > 0) sb.AppendLine(Ui.MarkWarn + Ui.T("del_skip"));
                     else
                     {
                         try
@@ -1671,12 +1697,12 @@ namespace SE.UI
                             if (Core.DeleteFailed.Count == 0) sb.AppendLine(Ui.T("del_ok"));
                             else
                             {
-                                sb.AppendLine(Ui.TF("del_partial", Core.DeleteFailed.Count, null));
-                                for (int i = 0; i < Core.DeleteFailed.Count; i++) sb.AppendLine("  " + Core.DeleteFailed[i]);
-                                sb.AppendLine(Ui.T("del_partial_hint"));
+                                sb.AppendLine(Ui.MarkWarn + Ui.TF("del_partial", Core.DeleteFailed.Count, null));
+                                for (int i = 0; i < Core.DeleteFailed.Count; i++) sb.AppendLine(Ui.MarkWarn + "  " + Core.DeleteFailed[i]);
+                                sb.AppendLine(Ui.MarkWarn + Ui.T("del_partial_hint"));
                             }
                         }
-                        catch (Exception dx) { sb.AppendLine(Ui.TF("del_fail", dx.Message, null)); }
+                        catch (Exception dx) { sb.AppendLine(Ui.MarkBad + Ui.TF("del_fail", dx.Message, null)); }
                     }
                 }
                 text = sb.ToString();
@@ -1994,7 +2020,7 @@ namespace SE.UI
                 sw.Stop();
                 StringBuilder sb = new StringBuilder();
                 sb.AppendLine(Ui.TF("sha", arc.ShaHex, null));
-                sb.AppendLine(arc.ShaOk ? Ui.T("sha_ok") : Ui.T("sha_fail"));
+                sb.AppendLine(arc.ShaOk ? Ui.T("sha_ok") : Ui.MarkBad + Ui.T("sha_fail"));
                 sb.AppendLine(Ui.TF("done", arc.Count, Path.GetFullPath(dest)));
                 sb.AppendLine(Ui.TF("elapsed", Ui.FmtDuration(sw.Elapsed.TotalSeconds), null));
                 text = sb.ToString();

@@ -1,6 +1,6 @@
 <a href="https://buymeacoffee.com/abdullaherturk" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
   
-# SecureEncrypt v7
+# SecureEncrypt v8
 **SecureEncrypt (AES-256 Encrypt & Decrypt)**
 
 ![Platform](https://img.shields.io/badge/Platform-Windows_7_--_11-0078D6?style=for-the-badge)
@@ -14,9 +14,13 @@
 
 ![sample](https://github.com/abdullah-erturk/Secure-Encrypt/blob/main/preview.jpg)
 
-Dosya ve klasörleri isteğe bağlı **AES-256 parola / anahtar dosyası koruması** ile kendi kendini açabilen tek bir `.cmd` arşivine dönüştüren bir Windows betiği.
+## Download Link / İndirme Bağlantısı:
 
-A Windows script that converts **files and folders** into a single, self-extracting `.cmd` archive, with optional **AES-256 password / key file protection**.
+[![Release](https://img.shields.io/badge/Release-v8.0-4c1.svg?style=flat)](https://github.com/abdullah-erturk/Secure-Encrypt/archive/refs/heads/main.zip)
+
+Dosya ve klasörleri isteğe bağlı **AES-256 parola / anahtar dosyası koruması** ile kendi kendini açabilen tek bir `.cmd` arşivine dönüştüren bir Windows betiği (Windows 7 – 11). Ayrıca tarayıcı sürümü sayesinde **çapraz platformdur**: Linux, macOS, Android ve iOS'ta da aynı dosyaları şifreleyip çözebilirsiniz; Chrome/Edge/Opera/Samsung Internet'te büyük dosya modu ile 1,5 GB sınırı da yoktur.
+
+A Windows script that converts **files and folders** into a single, self-extracting `.cmd` archive, with optional **AES-256 password / key file protection** (Windows 7 – 11). Thanks to the browser version it is also **cross-platform**: you can encrypt and decrypt the same files on Linux, macOS, Android and iOS, and in Chrome/Edge/Opera/Samsung Internet large file mode removes the 1.5 GB limit.
 
 ---
 
@@ -53,7 +57,7 @@ Bir veya birden fazla dosyayı/klasörü alıp, onları kendi kendini çözebile
 * **Çoklu dosya/klasör:** Aynı anda birden fazlasını sürükleyip bırakın ya da sağ tıkla seçin; hepsi tek `_decrypt.cmd` içinde toplanır.
 * **Sağ tık menüsü:** Dosya, klasör ve karışık seçimler için tek bir *Şifrele* girdisi, `*_decrypt.cmd` dosyaları için *Şifreyi Çöz*. Çoklu seçimde Explorer her öğe için ayrı işlem başlatır; küçük bir yardımcı (`C:\Windows\SecureEncrypt.js`, pencere açmaz) Explorer'a o penceredeki **seçimin tamamını** sorar ve hepsini **tek bir pencerede** işler (süreye bağlı değildir, tek dosyada da bekleme olmaz). Seçim alınamazsa (örneğin masaüstü) kuyruk yöntemi kullanılır: geç gelenler siz parolayı yazarken ana pencereye eklenir ("Seçilen N öğe daha eklendi"), çok geç kalanlar ayrı pencerede açılır, hiçbir öğe kaybolmaz. Windows Script Host kapalıysa yerleşik kuyruk yöntemi kullanılır.
 * **Klasör sorulmaz:** şifrelerken `_decrypt.cmd` kaynağın yanına yazılır, çözerken içerik `_decrypt.cmd` dosyasının bulunduğu klasöre çıkar.
-* **Orijinalleri silme seçeneği:** Önce çıktı çözülüp karşılaştırılarak **doğrulanır**, sonra onayınızla silinir; isterseniz üzerine yazılarak (SSD'lerde garanti vermez).
+* **Orijinalleri silme seçeneği:** Önce çıktı çözülüp karşılaştırılarak **doğrulanır**, sonra onayınızla silinir; isterseniz üzerine yazılır (SSD'lerde garanti vermez).
 * **Çakışma yönetimi:** Hedefte aynı ad varsa üzerine yaz / yeniden adlandır / atla / iptal.
 * **Orijinal değişiklik tarihi ve öznitelikler korunur**; boş klasörler de şifrelenir.
 * **Otomatik GZip sıkıştırma** (zaten sıkıştırılmış türler hariç).
@@ -120,7 +124,8 @@ Güvenlik, seçtiğiniz parolanın (ve/veya anahtar dosyasının) gücüne **ba�
 * **Mod 1 (parolasız):** `"SEv2" | 1 | bayraklar | SHA256(32) | XOR([GZip](kapsayıcı))`
 * Anahtar türetme: `master = PBKDF2-HMAC-SHA256(parola‖SHA256(anahtar dosyası), salt, yineleme)`; `şifreleme anahtarı = HMAC(master,"SE2-ENC")`, `MAC anahtarı = HMAC(master,"SE2-MAC")`, anahtar-kontrol = `HMAC(MAC anahtarı,"SE2-KEYCHECK")[0..16]`.
 * Kapsayıcı (`SEC1`): öğe sayısı, toplam boyut, her öğe için yol (UTF-8), değişiklik tarihi, öznitelikler, uzunluk ve veri.
-* **Boyut sınırı (Windows):** Biçim açısından teorik sınır yaklaşık **2 EiB**'dir (≈ 2 milyon TB): dosya uzunlukları ve toplam boyut 64 bittir, asıl tavanı SHA-256 / HMAC-SHA256'nın ileti uzunluğu sınırı (2⁶⁴ bit) belirler; öğe sayısı en çok yaklaşık 2,1 milyardır. Veri 256 KB'lık parçalarla akış olarak işlendiği için bellek kullanımı dosya boyutuna bağlı değildir. Gerçekteki sınırlar şunlardır: çıktı dosyasının yazıldığı dosya sistemi (FAT32'de tek dosya en çok 4 GiB − 1 bayt; NTFS'te pratikte onlarca TB), boş disk alanı (çıktı yaklaşık sıkıştırılmış veri boyutundadır) ve süre (veri özet için bir kez, şifreleme için bir kez okunur; "orijinalleri sil" seçiliyse doğrulama için bir kez daha). **4 GB üzeri çıktı:** Windows, 4 GB'tan büyük bir `.cmd` dosyasını çift tıklayarak veya doğrudan çalıştırarak açamaz ("geçerli bir Win32 uygulaması değil" hatası; Windows'un kendi sınırıdır). Bu boyuttaki `_decrypt.cmd` dosyaları için dosyaya **sağ tıklayıp "Şifreyi çöz"** ü seçin ya da SecureEncrypt arayüzünden seçin; şifreleme bittiğinde bu konuda uyarı gösterilir. Yaklaşık 5,6 GB'lık bir veri Windows 7'de şifrelenip çözülerek denenmiştir. Tarayıcı sürümü ise dosyaları belleğe okuduğu için toplam yaklaşık 1,5 GB ile sınırlıdır.
+* **Boyut sınırı (Windows):** Biçim açısından teorik sınır yaklaşık **2 EiB**'dir (≈ 2 milyon TB): dosya uzunlukları ve toplam boyut 64 bittir, asıl tavanı SHA-256 / HMAC-SHA256'nın ileti uzunluğu sınırı (2⁶⁴ bit) belirler; öğe sayısı en çok yaklaşık 2,1 milyardır. Veri 256 KB'lık parçalarla akış olarak işlendiği için bellek kullanımı dosya boyutuna bağlı değildir. Gerçekteki sınırlar şunlardır: çıktı dosyasının yazıldığı dosya sistemi (FAT32'de tek dosya en çok 4 GiB − 1 bayt; NTFS'te pratikte onlarca TB), boş disk alanı (çıktı yaklaşık sıkıştırılmış veri boyutundadır) ve süre (veri özet için bir kez, şifreleme için bir kez okunur; "orijinalleri sil" seçiliyse doğrulama için bir kez daha). **4 GB üzeri çıktı:** Windows, 4 GB'tan büyük bir `.cmd` dosyasını çift tıklayarak veya doğrudan çalıştırarak açamaz ("geçerli bir Win32 uygulaması değil" hatası; Windows'un kendi sınırıdır). Bu boyuttaki `_decrypt.cmd` dosyaları için dosyaya **sağ tıklayıp "Şifreyi çöz"** ü seçin ya da SecureEncrypt arayüzünden seçin; şifreleme bittiğinde bu konuda uyarı gösterilir. Yaklaşık 5,6 GB'lık bir veri Windows 7'de şifrelenip çözülerek denenmiştir.
+* **Boyut sınırı (Web / tarayıcı sürümü):** Chrome, Edge, Opera ve Samsung Internet'te büyük dosya modu ile boyut sınırı yoktur (veri parça parça işlenip doğrudan diske yazılır). Bu moda sahip olmayan tarayıcılarda (**Firefox**, **Safari**) dosyalar belleğe okunduğu için toplam yaklaşık 1,5 GB ile sınırlıdır.
 
 ### Kaynak kodu ve geliştirme
 * **Kullanmak için yalnızca `SecureEncrypt.cmd` yeterlidir.** Tek başına çalışır; `src\` ve `old_versions\` klasörlerine ihtiyaç yoktur. Başka bir bilgisayara yalnızca bu dosyayı taşımanız yeterli.
@@ -133,6 +138,7 @@ Güvenlik, seçtiğiniz parolanın (ve/veya anahtar dosyasının) gücüne **ba�
 | `lib.cs` | Şifreleme ve arşiv çekirdeği (her `_decrypt.cmd` içine de gömülür) |
 | `gui.cs` | Pencere arayüzü (Windows Forms; her `_decrypt.cmd` içine de gömülür) |
 | `lang\*.ini` | Metinler, dil başına bir dosya (`en.ini` temel dildir); hepsi gömülür |
+| `web\web_lang\*.ini` | Web sayfasının metinleri, dil başına bir dosya (`en.ini` temel dildir). Yeni dil için `en.ini`'yi `<kod>.ini` olarak kopyalayıp çevirin ve `build.ps1`'i çalıştırın; sayfa ve dil listesi otomatik oluşur |
 | `ext\` | Windows 11 menü girdisi: yardımcı COM sunucusu (`shell_server.cs`), simge/paket oluşturucu (`shell_pack.cs`), paket bildirimi (`AppxManifest.xml`) |
 | `web\template.html` | Tarayıcı sürümünün şablonu; derlemede `web\index.html` olarak üretilir (Windows çözücüsü içine gömülür) |
 | `dec.ps1` | Her `_decrypt.cmd` içine gömülen çözücü |
@@ -159,39 +165,33 @@ Windows'taki biçimle (`SEv2`) birebir uyumludur: sayfada şifrelenen dosya Wind
 
 * Dosyalar ve parola **yalnızca tarayıcıda** işlenir; sayfa hiçbir şey göndermez (sayfadaki CSP, ağ erişimini engeller). Bu yüzden büyük dosyalar da sunucuya yüklenmez.
 * Güncel bir tarayıcı gerekir (WebCrypto + CompressionStream) ve sayfa **güvenli bağlamda** açılmalıdır: `https://` adresi, `http://localhost` ya da yerel dosya (`file://`). Ağ adresiyle düz `http://` (örneğin `http://192.168.1.5/`) tarayıcıda şifrelemeyi kapatır; sayfa bu durumda kırmızı bir uyarı gösterir.
-* Dosyalar bütün halde belleğe okunur; toplam yaklaşık 1,5 GB ile sınırlıdır.
+* Büyük dosya modu olmayan tarayıcılarda (**Firefox**, **Safari**) dosyalar bütün halde belleğe okunur; toplam yaklaşık 1,5 GB ile sınırlıdır. Bu boyutu aşan dosya seçilirse sayfa "Bu tarayıcı büyük dosya modunu desteklemiyor (Chrome, Edge, Opera veya Samsung Internet'te kullanılabilir)" uyarısını gösterir ve Windows uygulamasına yönlendirir.
+* **Büyük dosya modu:** Dosya Sistemi Erişimi API'sini destekleyen tarayıcılarda (Chrome, Edge, Opera, Samsung Internet) 1,5 GB'ı aşan veriler parça parça işlenip doğrudan diske yazılır; bellek sınır olmaz. Şifrelerken kaydedilecek dosya, çözerken hedef klasör sorulur (dosyalar doğrudan seçilen klasöre, arşivdeki alt klasörleriyle birlikte yazılır; var olan bir dosyanın üzerine yazılmaz, yeni dosyanın adına " (2)" gibi bir numara eklenir; iptal ya da hata olursa bu işlemin oluşturduğu dosyalar silinir). Tarayıcı kuralı gereği Masaüstü, İndirilenler ve Belgeler klasörlerinin kendisi hedef olarak seçilemez ("Bu klasör açılamaz" uyarısı çıkar); içlerinde "Yeni klasör" ile bir klasör açıp onu seçin veya mevcut bir klasörü seçin. Parola ve anahtar dosyası burada da isteğe bağlıdır: yoksa içerik, Windows sürümündeki gibi yalnızca gizlenir (güvenlik sağlamaz). Parolalı işlem iki adımda yapılır (okuma/denetim ve şifreleme/çözme); iptal düğmesi vardır. Üretilen dosya normal SEv2 dosyasıdır; Windows'taki SecureEncrypt ile birebir uyumludur. **Firefox** ve **Safari**'de bu özellik yoktur, 1,5 GB sınırı geçerlidir.
 * Klasör eklerken tarayıcı "yükleme" izni isteyebilir. Bu, tarayıcının kendi ifadesidir; dosyalar hiçbir yere yüklenmez, izin yalnızca sayfanın klasörü okuyabilmesi içindir. Klasörleri sürükleyip bırakmak da mümkündür.
 * Windows'ta `*_decrypt.cmd` dosyası bir betik olduğu için bazı antivirüs programları (Windows Defender dahil), nadiren makine öğrenmesine dayalı yanlış pozitif verebilir. Kaynak kodun tamamı açıktır.
 * Sayfa `src\build.ps1` ile `src\web\template.html` şablonundan üretilir (Windows çözücüsü sayfaya gömülür); elle düzenlemeyin.
 
-## 🔄 v5 → v6 → v7: Neler Değişti? (ayrıntılar için [CHANGELOG.md](CHANGELOG.md) dosyasına bakınız)
+## 🔄 v7 → v8: Neler Değişti? (ayrıntılar için [CHANGELOG.md](CHANGELOG.md) dosyasına bakınız)
 
-v6, v5'in baştan yazılmış hâlidir. v7, v6'nın üzerine yeni pencere arayüzü, tarayıcı sürümü ve Windows 11 menüsünü ekler; dosya biçimi (`SEv2`) aynıdır.
+v8, v7'nin üzerine tarayıcı sürümünde büyük dosya modu, belirgin hız artışları ve renkli sonuç mesajları ekler. Dosya biçimi (`SEv2`) değişmemiştir.
 
-| Konu | v5 | v6 | v7 |
-| :--- | :--- | :--- | :--- |
-| Arayüz | Konsol | Konsol | **Pencere** (yatay, iki sütunlu) ve **Şifrele / Şifreyi çöz sekmeleri**; konsol yedek olarak durur |
-| Tarayıcı sürümü | Yok | Yok | **`web\index.html`**: her cihazda şifreleme ve çözme (yaklaşık 1,5 GB sınırı) |
-| Anahtar türetme | PBKDF2 (SHA-1), 10.000 yineleme | **PBKDF2-HMAC-SHA256, 600.000 yineleme** | Aynı |
-| Bütünlük | Yok (yalnızca AES-CBC) | **HMAC-SHA256** (değişen/bozuk dosya yazmadan reddedilir) | Aynı |
-| Parola | PowerShell komutunun içine yazılıyordu | `SecureString`, komut satırında geçmez; özel karakterler çalışır | Aynı |
-| Orijinal SHA256 | `_decrypt.cmd` içinde düz yazı | Şifreli verinin içinde | Aynı |
-| Anahtar dosyası, parola gücü, 3 deneme | Yok | **Var** | Aynı |
-| Seçim | Tek dosya veya klasör | **Çoklu dosya/klasör**, tek `_decrypt.cmd` | Aynı |
-| Klasörler | ZIP (Shell.Application / VBS) | Kendi kapsayıcı biçimi (Win7'de de aynı) | Aynı |
-| Sağ tık | "Dosyayı / Klasörü Şifrele" ayrı girdileri | Tek nötr *Şifrele* + *Şifreyi Çöz*; çoklu seçimde **tek pencere** | Aynı + **Windows 11 yeni menüsü** ve "arayüzü aç" girdisi |
-| Sorular | Çok adımlı | Çıktı klasörü sorulmaz; gelişmiş seçenekler tek `[e/H]` sorusunda | Aynı |
-| Orijinalleri silme | Yok | Çözüp karşılaştırarak doğrular, sonra siler | Aynı |
-| Sıkıştırma | Yok | Otomatik GZip | Aynı (3,5 GB üstünde kapanır) |
-| Büyük dosyalar | – | 4 GB üstü `_decrypt.cmd` sorunluydu | Başlatıcı düzeltildi, uyarı gösterilir (4 GB üstü dosya çift tıklamayla açılmaz) |
-| Süre | Yok | Yok | Sonuçta **geçen süre** |
-| Dil | Ayrı TR ve EN betikleri | **Tek betik**, Windows diline göre otomatik | Aynı; metinler `src\lang\*.ini` dosyalarında (yeni dil eklemek kolay) |
-| Unicode | – | Dosya adı/parola her dilde, kod sayfasından bağımsız | Aynı |
-| 3. parti uygulama | Gerekmez | Gerekmez (yerleşik Windows bileşenleri) | Aynı |
-| Windows 7 | – | PowerShell 2.0 / .NET 2.0 uyumlu, denenmiştir | Aynı |
-| İmza | Elle güncellenir, özet panoya kopyalanırdı | `src\build.ps1` ile otomatik hesaplanır | Aynı |
+| Konu | v7 | v8 |
+| :--- | :--- | :--- |
+| Tarayıcıda dosya boyutu | Yaklaşık 1,5 GB sınırı | Chrome/Edge/Opera/Samsung Internet'te **büyük dosya modu ile sınırsız**: parça parça işlenir, doğrudan diske yazılır, **iptal düğmesi** ve ilerleme çubuğu vardır |
+| Tarayıcıda büyük dosya, şifre | – | Parola/anahtar dosyası **isteğe bağlı**; yoksa içerik Windows'taki gibi yalnızca gizlenir (sarı uyarı gösterilir) |
+| Tarayıcıda büyük dosya çözme | – | Dosyalar doğrudan seçilen klasöre yazılır, **var olanın üzerine yazılmaz** (" (2)"), iptal/hatada oluşan dosyalar silinir |
+| Tarayıcıda hız | SHA-256/HMAC yavaş (JS) | SHA-256 yaklaşık **1,6 kat hızlı** (turlar tek tek açık yazılmış kod); 5,65 GB çözme yaklaşık 4,5 dk |
+| Windows'ta AES hızı | `RijndaelManaged` (~56 MB/sn) | Hızlı sağlayıcı (`AesCryptoServiceProvider`, ~600 MB/sn; bulunamazsa eskisine döner). 600 MB: şifreleme 15,3 → 6,3 sn, çözme 14,6 → 4,8 sn |
+| Sonuç penceresi | Düz metin | **DİKKAT** satırları sarı, hata satırları kırmızı |
+| Web dil dosyaları | Metinler `template.html` içinde | `src\web\web_lang\*.ini` (9 dil); yeni dil için bir dosya eklenip `build.ps1` çalıştırılır |
+| Dosya biçimi, güvenlik | `SEv2`, AES-256-CBC + HMAC-SHA256, PBKDF2 600.000 | Aynı |
 
-**Uyumluluk:** v6 ve v7 dosya biçimi (`SEv2`) v5'inkiyle uyumlu değildir. v5 ile oluşturulmuş `_decrypt.cmd` dosyaları kendi çözücülerini içerdiği için çalışmaya devam etmesi beklenir. v6 ile v7 arasında uyumluluk sorunu yoktur: biçim aynıdır, v6 ile oluşturulmuş dosyalar v7'de de açılır.
+**Uyumluluk:**
+* **Dosya biçimi (`SEv2`) v6, v7 ve v8'de aynıdır.** v6/v7 ile oluşturulmuş `_decrypt.cmd` dosyaları v8'in Windows uygulamasında ve tarayıcı sürümünde (büyük dosya modu dahil) açılır; v8'in ürettiği dosyalar da eski sürümlerin çözücüsüyle açılır. İki yönlü olarak denenmiştir (parolalı ve parolasız).
+* Daha önce üretilmiş `_decrypt.cmd` dosyaları kendi çözücülerini içerir; bu yüzden **eskisi gibi çalışır, ancak yeni hız artışlarından yararlanmaz**. Hızlı AES için dosyayı yeniden şifreleyin.
+* v6 ve sonrası biçim, v5'inkiyle uyumlu değildir; v5 ile oluşturulmuş `_decrypt.cmd` dosyaları kendi çözücülerini içerdiği için çalışmaya devam etmesi beklenir.
+* Büyük dosya modu Dosya Sistemi Erişimi API'si gerektirir (Chrome, Edge, Opera, Samsung Internet; güvenli bağlam). **Firefox** ve **Safari**'de 1,5 GB sınırı sürer; çok büyük dosyalar için Windows uygulamasını kullanın. Android'de (Galaxy S23 Ultra) Chrome ve Samsung Internet ile 2 GB üstü dosya ve klasörlerin şifrelenip çözülmesi denenmiştir (örn. 2,33 GB'lık dosya: şifreleme 1 dk 52 sn, çözme 1 dk 35 sn); diğer Android tarayıcıları denenmemiştir. Nedeni teknik değil, tarayıcıların tercihidir: sayfanın doğrudan diskteki bir dosyaya ya da klasöre yazmasını sağlayan `showSaveFilePicker` / `showDirectoryPicker` işlevlerini yalnızca Chromium tabanlı tarayıcılar (Chrome, Edge, Opera, Samsung Internet) sunar. Mozilla (Firefox) ve Apple (Safari) bu API'yi güvenlik ve gizlilik gerekçesiyle uygulamamıştır; Brave de varsayılan olarak kapatır. Bu işlevler olmadan veriyi parça parça diske yazmanın bir yolu yoktur, tüm sonuç bellekte tutulmak zorundadır.
+* Windows 7 / PowerShell 2.0: hem Windows uygulaması hem tarayıcı sürümü v8'de Windows 7 üzerinde (hızlı AES sağlayıcı ile) denenmiş ve sorunsuz çalışmıştır. Hızlı AES sağlayıcı bulunamazsa kod otomatik olarak eski sağlayıcıya döner.
 
 **Bilinen sınır:** Windows, klasik sağ tık komutlarını **15'ten fazla öğe** seçildiğinde göstermez. Daha fazlası için dosyaları `SecureEncrypt.cmd` üzerine sürükleyip bırakın.
 
@@ -303,7 +303,8 @@ Binary payload (`SEv2`):
 * **Mode 1 (no password):** `"SEv2" | 1 | flags | SHA256(32) | XOR([GZip](container))`
 * Key derivation: `master = PBKDF2-HMAC-SHA256(password‖SHA256(key file), salt, iterations)`; `enc key = HMAC(master,"SE2-ENC")`, `MAC key = HMAC(master,"SE2-MAC")`, key-check = `HMAC(MAC key,"SE2-KEYCHECK")[0..16]`.
 * Container (`SEC1`): entry count, total size, then per entry: path (UTF-8), modified time, attributes, length and data.
-* **Size limit (Windows):** By format the theoretical limit is about **2 EiB** (≈ 2 million TB): file lengths and the total size are 64-bit, and the real ceiling is the message length limit of SHA-256 / HMAC-SHA256 (2⁶⁴ bits); the number of items is at most about 2.1 billion. Data is processed as a stream in 256 KB chunks, so memory use does not depend on the file size. The real limits are: the file system the output is written to (on FAT32 a single file is at most 4 GiB − 1 byte; on NTFS tens of TB in practice), free disk space (the output is about the size of the compressed data) and time (the data is read once for the hash and once for encryption; once more for verification when "delete originals" is chosen). **Output larger than 4 GB:** Windows cannot open a `.cmd` file larger than 4 GB by double-click or by running it directly (error "not a valid Win32 application"; this is a Windows limit). For `_decrypt.cmd` files of that size, **right-click and choose "Decrypt"**, or pick the file in SecureEncrypt; a warning about this is shown when the encryption finishes. About 5.6 GB of data has been encrypted and decrypted on Windows 7. The browser version reads files into memory, so it is limited to about 1.5 GB in total.
+* **Size limit (Windows):** By format the theoretical limit is about **2 EiB** (≈ 2 million TB): file lengths and the total size are 64-bit, and the real ceiling is the message length limit of SHA-256 / HMAC-SHA256 (2⁶⁴ bits); the number of items is at most about 2.1 billion. Data is processed as a stream in 256 KB chunks, so memory use does not depend on the file size. The real limits are: the file system the output is written to (on FAT32 a single file is at most 4 GiB − 1 byte; on NTFS tens of TB in practice), free disk space (the output is about the size of the compressed data) and time (the data is read once for the hash and once for encryption; once more for verification when "delete originals" is chosen). **Output larger than 4 GB:** Windows cannot open a `.cmd` file larger than 4 GB by double-click or by running it directly (error "not a valid Win32 application"; this is a Windows limit). For `_decrypt.cmd` files of that size, **right-click and choose "Decrypt"**, or pick the file in SecureEncrypt; a warning about this is shown when the encryption finishes. About 5.6 GB of data has been encrypted and decrypted on Windows 7.
+* **Size limit (Web / browser version):** In Chrome, Edge, Opera and Samsung Internet there is no size limit with large file mode (data is processed piece by piece and written straight to disk). In browsers without it (**Firefox**, **Safari**) files are read into memory, so the total is limited to about 1.5 GB.
 
 ### Source code and development
 * **`SecureEncrypt.cmd` alone is enough to use the program.** It is self-contained; the `src\` and `old_versions\` folders are not needed. Copy only this file to another computer releases.
@@ -316,6 +317,7 @@ Binary payload (`SEv2`):
 | `lib.cs` | Crypto and archive core (also embedded in every `_decrypt.cmd`) |
 | `gui.cs` | Window interface (Windows Forms; also embedded in every `_decrypt.cmd`) |
 | `lang\*.ini` | The texts, one file per language (`en.ini` is the base language); all are embedded |
+| `web\web_lang\*.ini` | The texts of the web page, one file per language (`en.ini` is the base language). To add a language, copy `en.ini` to `<code>.ini`, translate it and run `build.ps1`; the page and its language list are generated automatically |
 | `ext\` | Windows 11 menu entry: helper COM server (`shell_server.cs`), icon / package builder (`shell_pack.cs`), package manifest (`AppxManifest.xml`) |
 | `web\template.html` | Template of the browser version; the build turns it into `web\index.html` (the Windows decryptor is embedded in it) |
 | `dec.ps1` | The decryptor embedded in every `_decrypt.cmd` |
@@ -342,39 +344,33 @@ It is fully compatible with the Windows format (`SEv2`): a file encrypted in the
 
 * Files and the password are processed **only in the browser**; the page sends nothing (its CSP blocks all network access). So even large files are never uploaded to a server.
 * Needs a current browser (WebCrypto + CompressionStream) and the page must be opened in a **secure context**: an `https://` address, `http://localhost`, or a local file (`file://`). Plain `http://` with a network address (for example `http://192.168.1.5/`) makes the browser switch cryptography off; the page then shows a red warning.
-* Files are read into memory as a whole; the total is limited to about 1.5 GB.
+* In browsers without large file mode (**Firefox**, **Safari**) files are read into memory as a whole; the total is limited to about 1.5 GB. Choosing a file above this size makes the page show "This browser does not support large file mode (it is available in Chrome, Edge, Opera and Samsung Internet)" and point to the Windows application.
+* **Large file mode:** in browsers that support the File System Access API (Chrome, Edge, Opera, Samsung Internet), data over 1.5 GB is processed piece by piece and written straight to disk, so memory is not a limit. When encrypting you choose the file to save; when decrypting you choose a target folder (the files are written straight into it, with the archive's sub folders; an existing file is never overwritten, a number such as " (2)" is added to the new file's name; on a cancel or an error, the files this run created are removed). Because of a browser rule, the Desktop, Downloads and Documents folders themselves cannot be chosen as the target (a "This folder can't be opened" warning appears); create a folder inside one of them with "New folder" and choose that, or choose an existing folder. A password and a key file are optional here as well: without them the content is only hidden, as in the Windows version (no security). Work with a password takes two steps (reading/checking, then encrypting/decrypting); there is a Cancel button. The result is an ordinary SEv2 file, fully compatible with SecureEncrypt on Windows. **Firefox** and **Safari** do not have this feature, so the 1.5 GB limit applies there.
 * When you add a folder, the browser may ask for permission to "upload" it. That is the browser's own wording; the files are not uploaded anywhere, the permission only lets the page read the folder. Dragging and dropping folders also works.
 * A `*_decrypt.cmd` file is a script on Windows, so some antivirus programs (including Windows Defender) may rarely report a machine-learning based false positive. The whole source code is open.
 * The page is generated from `src\web\template.html` by `src\build.ps1` (the Windows decryptor is embedded in it); do not edit it by hand.
 
-## 🔄 v5 → v6 → v7: What Changed? (see the [CHANGELOG.md](CHANGELOG.md) file for details)
+## 🔄 v7 → v8: What Changed? (see the [CHANGELOG.md](CHANGELOG.md) file for details)
 
-v6 is a rewrite of v5. v7 adds a new window interface, a browser version and a Windows 11 menu on top of v6; the file format (`SEv2`) is the same.
+v8 adds a large file mode to the browser version, clear speed-ups and coloured result messages on top of v7. The file format (`SEv2`) is unchanged.
 
-| Topic | v5 | v6 | v7 |
-| :--- | :--- | :--- | :--- |
-| Interface | Console | Console | **Window** (landscape, two columns) with **Encrypt / Decrypt tabs**; the console stays as a fallback |
-| Browser version | No | No | **`web\index.html`**: encrypt and decrypt on any device (about 1.5 GB limit) |
-| Key derivation | PBKDF2 (SHA-1), 10,000 iterations | **PBKDF2-HMAC-SHA256, 600,000 iterations** | Same |
-| Integrity | None (plain AES-CBC) | **HMAC-SHA256** (modified/corrupted file rejected before writing) | Same |
-| Password | Written inside the PowerShell command | `SecureString`, never on a command line; special characters work | Same |
-| Original SHA256 | Clear text in `_decrypt.cmd` | Inside the encrypted data | Same |
-| Key file, strength meter, 3 attempts | No | **Yes** | Same |
-| Selection | One file or folder | **Multiple files/folders** in one `_decrypt.cmd` | Same |
-| Folders | ZIP (Shell.Application / VBS) | Own container format (same on Win7) | Same |
-| Right-click | Separate "Encrypt File / Folder" entries | One neutral *Encrypt* + *Decrypt*; multi-selection in **one window** | Same + **Windows 11 modern menu** and an "open window" entry |
-| Questions | Many steps | No output-folder question; advanced options behind one `[y/N]` question | Same |
-| Delete originals | No | Verifies by decrypting and comparing, then deletes | Same |
-| Compression | No | Automatic GZip | Same (switched off above 3.5 GB) |
-| Large files | – | `_decrypt.cmd` files over 4 GB were problematic | Launcher fixed, a warning is shown (files over 4 GB cannot be opened by double-click) |
-| Elapsed time | No | No | **Time taken** shown in the result |
-| Language | Separate TR and EN scripts | **One script**, automatic by Windows language | Same; texts live in `src\lang\*.ini` (adding a language is easy) |
-| Unicode | – | Names/password in any language, independent of the code page | Same |
-| Third-party software | Not needed | Not needed (built-in Windows components) | Same |
-| Windows 7 | – | PowerShell 2.0 / .NET 2.0 compatible, tested | Same |
-| Signature | Updated by hand, hash copied to the clipboard | Computed automatically by `src\build.ps1` | Same |
+| Topic | v7 | v8 |
+| :--- | :--- | :--- |
+| File size in the browser | About 1.5 GB limit | In Chrome/Edge/Opera/Samsung Internet **no limit with large file mode**: processed piece by piece, written straight to disk, with a **Cancel button** and a progress bar |
+| Large files, protection | – | Password/key file **optional**; without them the content is only hidden, as in Windows (an amber warning is shown) |
+| Large files, decrypting | – | Files are written straight into the chosen folder, **never overwriting** existing ones (" (2)"); files created by a cancelled or failed run are removed |
+| Browser speed | Slow SHA-256/HMAC (JS) | SHA-256 about **1.6x faster** (fully unrolled rounds); decrypting 5.65 GB takes about 4.5 min |
+| AES speed on Windows | `RijndaelManaged` (~56 MB/s) | Fast provider (`AesCryptoServiceProvider`, ~600 MB/s; falls back to the old one if missing). 600 MB: encrypt 15.3 → 6.3 s, decrypt 14.6 → 4.8 s |
+| Result window | Plain text | **WARNING** lines in amber, error lines in red |
+| Web language files | Texts inside `template.html` | `src\web\web_lang\*.ini` (9 languages); add a file and run `build.ps1` for a new language |
+| File format, security | `SEv2`, AES-256-CBC + HMAC-SHA256, PBKDF2 600,000 | Same |
 
-**Compatibility:** the v6 and v7 file format (`SEv2`) is not compatible with v5's. `_decrypt.cmd` files created with v5 carry their own decryptor, so they are expected to keep working. There is no compatibility problem between v6 and v7: the format is the same, and files created with v6 open in v7 too.
+**Compatibility:**
+* **The file format (`SEv2`) is the same in v6, v7 and v8.** `_decrypt.cmd` files created with v6/v7 open in the v8 Windows app and in the browser version (large file mode included); files made by v8 open with the decryptor of older versions too. Tested in both directions (with and without a password).
+* Previously created `_decrypt.cmd` files carry their own decryptor, so they **keep working as before but do not get the new speed-ups**. Encrypt the data again for the fast AES.
+* The v6-and-later format is not compatible with v5's; `_decrypt.cmd` files created with v5 carry their own decryptor, so they are expected to keep working.
+* Large file mode needs the File System Access API (Chrome, Edge, Opera, Samsung Internet; secure context). **Firefox** and **Safari** keep the 1.5 GB limit; use the Windows app for very large files. Encrypting and decrypting files and folders over 2 GB has been tested on Android (Galaxy S23 Ultra) with Chrome and Samsung Internet (e.g. a 2.33 GB file: encrypt 1 min 52 s, decrypt 1 min 35 s); other Android browsers have not been tested. The reason is the browsers' choice, not a technical one: only Chromium-based browsers (Chrome, Edge, Opera, Samsung Internet) offer `showSaveFilePicker` / `showDirectoryPicker`, the functions that let a page write straight to a file or folder on disk. Mozilla (Firefox) and Apple (Safari) have not implemented this API for security and privacy reasons, and Brave disables it by default. Without these functions there is no way to write the data to disk piece by piece, so the whole result has to be held in memory.
+* Windows 7 / PowerShell 2.0: both the Windows app and the browser version of v8 were tested on Windows 7 (with the fast AES provider) and work without problems. If the fast AES provider is missing, the code falls back to the old one automatically.
 
 **Known limit:** Windows does not show classic right-click commands when **more than 15 items** are selected. For more, drag and drop them onto `SecureEncrypt.cmd`.
 

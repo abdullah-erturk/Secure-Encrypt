@@ -414,15 +414,34 @@ namespace SE
             Array.Clear(master, 0, master.Length);
         }
 
-        private static RijndaelManaged NewAes(byte[] key, byte[] iv)
+        private static void ConfigureAes(SymmetricAlgorithm aes, byte[] key, byte[] iv)
         {
-            RijndaelManaged aes = new RijndaelManaged();
             aes.KeySize = 256;
             aes.BlockSize = 128;
             aes.Mode = CipherMode.CBC;
             aes.Padding = PaddingMode.PKCS7;
             aes.Key = key;
             aes.IV = iv;
+        }
+
+        // AES-256-CBC. The name "AES" gives the Windows crypto provider (AesCryptoServiceProvider, uses the processor's AES
+        // instructions: about ten times faster than the managed RijndaelManaged). It is looked up by name so that nothing
+        // here needs System.Core at compile time; if it is not available the managed implementation is used. The result
+        // is the same (AES-256-CBC, PKCS7), so files are identical either way.
+        public static SymmetricAlgorithm NewAes(byte[] key, byte[] iv)
+        {
+            try
+            {
+                SymmetricAlgorithm fast = SymmetricAlgorithm.Create("AES");
+                if (fast != null)
+                {
+                    ConfigureAes(fast, key, iv);
+                    return fast;
+                }
+            }
+            catch { }
+            RijndaelManaged aes = new RijndaelManaged();
+            ConfigureAes(aes, key, iv);
             return aes;
         }
 
@@ -615,7 +634,7 @@ namespace SE
                     HMACSHA256 mac = new HMACSHA256(macKey);
                     HashWriteStream hw = new HashWriteStream(fo, mac);
                     hw.Write(header, 0, header.Length);
-                    RijndaelManaged aes = NewAes(encKey, iv);
+                    SymmetricAlgorithm aes = NewAes(encKey, iv);
                     CryptoStream cs = new CryptoStream(new NonClosingStream(hw), aes.CreateEncryptor(), CryptoStreamMode.Write);
                     ProgressBar pb2 = new ProgressBar(total);
                     sha2 = WritePayload(entries, total, cs, gzip, sha, pb2);
@@ -980,13 +999,7 @@ namespace SE
                     if (!Core.CompareBytes(mac.Hash, tag)) throw new CryptographicException("MAC");
 
                     fs.Position = payloadStart;
-                    RijndaelManaged aes = new RijndaelManaged();
-                    aes.KeySize = 256;
-                    aes.BlockSize = 128;
-                    aes.Mode = CipherMode.CBC;
-                    aes.Padding = PaddingMode.PKCS7;
-                    aes.Key = encKey;
-                    aes.IV = iv;
+                    SymmetricAlgorithm aes = Core.NewAes(encKey, iv);
                     CryptoStream cs = new CryptoStream(new BoundedStream(fs, payloadEnd - payloadStart), aes.CreateDecryptor(), CryptoStreamMode.Read);
                     expected = new byte[32];
                     if (ReadHeader(cs, expected, 32) != 32) throw new InvalidDataException("FORMAT");

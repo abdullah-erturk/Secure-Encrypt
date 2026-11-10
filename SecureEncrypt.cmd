@@ -1,6 +1,6 @@
 @echo off
 title SecureEncrypt (AES-256 Encrypt ^& Decrypt^) by Abdullah ERTURK
-set "_V_SIG=9525f8b896e69b4fb498e4b22a2c5c38b737429bf0b7a7ccfff84f348310f1a4"
+set "_V_SIG=ce3a86640a138cd4ec039844b5fd5f47fbcb3d5793d73acbc26a90df110eeb08"
 setlocal enabledelayedexpansion
 
 set "TEMP_SELF=%TEMP%\SecureEncrypt_verify_%RANDOM%.tmp"
@@ -81,7 +81,7 @@ $SelfPath = $env:SE_SELF
 # itself (PowerShell has read the whole file by now).
 if ($env:SE_DETACHED -eq '1') { try { Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue } catch { } }
 $script:RunItems = @()
-$Version = '7.0'
+$Version = '8.0'
 # ---------------------------------------------------------------- texts
 # The texts live in src\lang\*.ini; build.ps1 embeds them as $LangData (language code -> key -> text).
 # Keys that a language lacks fall back to English. The same block is in engine.ps1 and dec.ps1.
@@ -388,7 +388,7 @@ function Add-ModernMenu {
         $mf = Join-Path $work 'app.manifest'
         $mfText = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' + "`r`n" +
             '<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">' + "`r`n" +
-            '  <assemblyIdentity version="7.0.0.0" processorArchitecture="*" name="SecureEncrypt.ShellServer" type="win32" />' + "`r`n" +
+            '  <assemblyIdentity version="8.0.0.0" processorArchitecture="*" name="SecureEncrypt.ShellServer" type="win32" />' + "`r`n" +
             '  <description>SecureEncrypt Windows 11 context menu handler</description>' + "`r`n" +
             '  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3"><security><requestedPrivileges><requestedExecutionLevel level="asInvoker" uiAccess="false" /></requestedPrivileges></security></trustInfo>' + "`r`n" +
             '  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1"><application>' + "`r`n" +
@@ -3113,15 +3113,29 @@ Array.Copy(kc, keyCheck, 16);
 Array.Clear(master, 0, master.Length);
 }
 
-private static RijndaelManaged NewAes(byte[] key, byte[] iv)
+private static void ConfigureAes(SymmetricAlgorithm aes, byte[] key, byte[] iv)
 {
-RijndaelManaged aes = new RijndaelManaged();
 aes.KeySize = 256;
 aes.BlockSize = 128;
 aes.Mode = CipherMode.CBC;
 aes.Padding = PaddingMode.PKCS7;
 aes.Key = key;
 aes.IV = iv;
+}
+public static SymmetricAlgorithm NewAes(byte[] key, byte[] iv)
+{
+try
+{
+SymmetricAlgorithm fast = SymmetricAlgorithm.Create("AES");
+if (fast != null)
+{
+ConfigureAes(fast, key, iv);
+return fast;
+}
+}
+catch { }
+RijndaelManaged aes = new RijndaelManaged();
+ConfigureAes(aes, key, iv);
 return aes;
 }
 
@@ -3301,7 +3315,7 @@ Array.Copy(kc, 0, header, 42, 16);
 HMACSHA256 mac = new HMACSHA256(macKey);
 HashWriteStream hw = new HashWriteStream(fo, mac);
 hw.Write(header, 0, header.Length);
-RijndaelManaged aes = NewAes(encKey, iv);
+SymmetricAlgorithm aes = NewAes(encKey, iv);
 CryptoStream cs = new CryptoStream(new NonClosingStream(hw), aes.CreateEncryptor(), CryptoStreamMode.Write);
 ProgressBar pb2 = new ProgressBar(total);
 sha2 = WritePayload(entries, total, cs, gzip, sha, pb2);
@@ -3651,13 +3665,7 @@ if (ReadHeader(fs, tag, 32) != 32) throw new InvalidDataException("FORMAT");
 if (!Core.CompareBytes(mac.Hash, tag)) throw new CryptographicException("MAC");
 
 fs.Position = payloadStart;
-RijndaelManaged aes = new RijndaelManaged();
-aes.KeySize = 256;
-aes.BlockSize = 128;
-aes.Mode = CipherMode.CBC;
-aes.Padding = PaddingMode.PKCS7;
-aes.Key = encKey;
-aes.IV = iv;
+SymmetricAlgorithm aes = Core.NewAes(encKey, iv);
 CryptoStream cs = new CryptoStream(new BoundedStream(fs, payloadEnd - payloadStart), aes.CreateDecryptor(), CryptoStreamMode.Read);
 expected = new byte[32];
 if (ReadHeader(cs, expected, 32) != 32) throw new InvalidDataException("FORMAT");
@@ -3711,6 +3719,8 @@ public static Dictionary<string, string> S = new Dictionary<string, string>();
 public static string[] CompressedExt = new string[0];
 public static volatile bool LastOk;
 internal static Exception Failure;
+public const string MarkWarn = "\u0001";
+public const string MarkBad = "\u0002";
 public static void Put(string k, string v) { S[k] = v; }
 public static string LangRequest = "";
 public static string[] KeptItems = new string[0];
@@ -3902,7 +3912,7 @@ return l;
 internal static void ShowAbout(IWin32Window owner)
 {
 Form d = new Form();
-d.Text = T("g_about");
+d.Text = "SecureEncrypt v8.0 - " + T("g_about");
 d.FormBorderStyle = FormBorderStyle.FixedDialog;
 d.StartPosition = FormStartPosition.CenterParent;
 d.MaximizeBox = false; d.MinimizeBox = false; d.ShowInTaskbar = false;
@@ -4647,7 +4657,7 @@ protected Panel pageAlt;                // optional second options page (the dec
 protected Control tabBar;               // disabled while the work page is shown
 protected GlowBar bar;
 protected Label status;
-protected TextBox summary;
+protected RichTextBox summary;
 protected FlatButton btnOpen, btnStop, btnLang;
 internal bool busy;
 protected string openTarget;
@@ -4702,8 +4712,8 @@ status.SetBounds(18, 16, clientW - 76, 22);
 status.BackColor = Color.Transparent; status.ForeColor = Theme.Text; status.Font = Theme.Bold;
 bar = new GlowBar();
 bar.SetBounds(18, 46, clientW - 76, 10);
-summary = new TextBox();
-summary.Multiline = true; summary.ReadOnly = true; summary.ScrollBars = ScrollBars.Vertical;
+summary = new RichTextBox();
+summary.ReadOnly = true; summary.ScrollBars = RichTextBoxScrollBars.Vertical; summary.DetectUrls = false;
 summary.BorderStyle = BorderStyle.None;
 summary.BackColor = Theme.Field; summary.ForeColor = Theme.Text; summary.Font = Theme.Small;
 summary.SetBounds(18, 72, clientW - 76, ph - 62 - 90);
@@ -4894,6 +4904,25 @@ SE.ProgressBar.Sink = null;
 Core.StatusSink = null;
 Core.ConflictSink = null;
 }
+private void FillSummary(string text)
+{
+summary.Clear();
+string[] lines = text.Replace("\r\n", "\n").TrimEnd('\n').Split('\n');
+for (int i = 0; i < lines.Length; i++)
+{
+string line = lines[i];
+Color col = Theme.Text;
+if (line.StartsWith(Ui.MarkWarn)) { col = Theme.Warn; line = line.Substring(1); }
+else if (line.StartsWith(Ui.MarkBad)) { col = Theme.Danger; line = line.Substring(1); }
+summary.SelectionStart = summary.TextLength;
+summary.SelectionLength = 0;
+summary.SelectionColor = col;
+summary.AppendText(i < lines.Length - 1 ? line + "\n" : line);
+}
+summary.SelectionStart = 0;
+summary.SelectionLength = 0;
+summary.ScrollToCaret();
+}
 internal void ShowResult(bool ok, string statusText, string summaryText, string target)
 {
 busy = false;
@@ -4901,7 +4930,7 @@ openTarget = target;
 bar.Value = ok ? 100 : bar.Value;
 status.ForeColor = ok ? Theme.Ok : Theme.Danger;
 status.Text = statusText;
-if (summaryText != null && summaryText.Length > 0) { summary.Text = summaryText; summary.Visible = true; }
+if (summaryText != null && summaryText.Length > 0) { FillSummary(summaryText); summary.Visible = true; }
 btnOpen.Visible = target != null;
 btnStop.Text = Ui.T("g_close");
 btnStop.Enabled = true;
@@ -5246,10 +5275,10 @@ sb.AppendLine(Ui.TF("src_sha", Core.LastSha, null));
 string mode = secret == null ? Ui.T("mode1") : Ui.T("mode2");
 mode += ", " + (gzip ? Ui.T("comp_on") : Ui.T("comp_off"));
 sb.AppendLine(Ui.TF("mode_label", mode, null));
-for (int i = 0; i < Core.Skipped.Count; i++) sb.AppendLine(Ui.TF("skipped", Core.Skipped[i], null));
+for (int i = 0; i < Core.Skipped.Count; i++) sb.AppendLine(Ui.MarkWarn + Ui.TF("skipped", Core.Skipped[i], null));
 if (delMode > 0) sb.AppendLine(Ui.T("verified"));
 sb.AppendLine(Ui.TF("out_info", outCmd, Ui.FmtSize(Core.LastOutSize)));
-if (Core.LastOutSize >= 4294967296L) sb.AppendLine(Ui.T("big_warn"));
+if (Core.LastOutSize >= 4294967296L) sb.AppendLine(Ui.MarkWarn + Ui.T("big_warn"));
 sb.AppendLine(Ui.TF("elapsed", Ui.FmtDuration(sw.Elapsed.TotalSeconds), null));
 
 if (delMode > 0)
@@ -5257,7 +5286,7 @@ if (delMode > 0)
 bool inside = false;
 for (int i = 0; i < items.Length; i++)
 if (Directory.Exists(items[i]) && outCmd.StartsWith(items[i].TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase)) inside = true;
-if (inside || Core.Skipped.Count > 0) sb.AppendLine(Ui.T("del_skip"));
+if (inside || Core.Skipped.Count > 0) sb.AppendLine(Ui.MarkWarn + Ui.T("del_skip"));
 else
 {
 try
@@ -5266,12 +5295,12 @@ Core.DeleteItems(items, delMode == 2);
 if (Core.DeleteFailed.Count == 0) sb.AppendLine(Ui.T("del_ok"));
 else
 {
-sb.AppendLine(Ui.TF("del_partial", Core.DeleteFailed.Count, null));
-for (int i = 0; i < Core.DeleteFailed.Count; i++) sb.AppendLine("  " + Core.DeleteFailed[i]);
-sb.AppendLine(Ui.T("del_partial_hint"));
+sb.AppendLine(Ui.MarkWarn + Ui.TF("del_partial", Core.DeleteFailed.Count, null));
+for (int i = 0; i < Core.DeleteFailed.Count; i++) sb.AppendLine(Ui.MarkWarn + "  " + Core.DeleteFailed[i]);
+sb.AppendLine(Ui.MarkWarn + Ui.T("del_partial_hint"));
 }
 }
-catch (Exception dx) { sb.AppendLine(Ui.TF("del_fail", dx.Message, null)); }
+catch (Exception dx) { sb.AppendLine(Ui.MarkBad + Ui.TF("del_fail", dx.Message, null)); }
 }
 }
 text = sb.ToString();
@@ -5570,7 +5599,7 @@ arc.Extract(dest);
 sw.Stop();
 StringBuilder sb = new StringBuilder();
 sb.AppendLine(Ui.TF("sha", arc.ShaHex, null));
-sb.AppendLine(arc.ShaOk ? Ui.T("sha_ok") : Ui.T("sha_fail"));
+sb.AppendLine(arc.ShaOk ? Ui.T("sha_ok") : Ui.MarkBad + Ui.T("sha_fail"));
 sb.AppendLine(Ui.TF("done", arc.Count, Path.GetFullPath(dest)));
 sb.AppendLine(Ui.TF("elapsed", Ui.FmtDuration(sw.Elapsed.TotalSeconds), null));
 text = sb.ToString();
@@ -6173,9 +6202,9 @@ using System.Reflection;
 [assembly: AssemblyCompany("Abdullah ERT\u00dcRK")]
 [assembly: AssemblyProduct("SecureEncrypt")]
 [assembly: AssemblyCopyright("Open source - Abdullah ERT\u00dcRK - github.com/abdullah-erturk - erturk-dev.netlify.app")]
-[assembly: AssemblyVersion("7.0.0.0")]
-[assembly: AssemblyFileVersion("7.0.0.0")]
-[assembly: AssemblyInformationalVersion("7.0 -open source: github.com/abdullah-erturk - erturk-dev.netlify.app")]
+[assembly: AssemblyVersion("8.0.0.0")]
+[assembly: AssemblyFileVersion("8.0.0.0")]
+[assembly: AssemblyInformationalVersion("8.0 -open source: github.com/abdullah-erturk - erturk-dev.netlify.app")]
 
 namespace SEShell
 {
