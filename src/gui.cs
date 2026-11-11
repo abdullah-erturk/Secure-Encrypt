@@ -1662,11 +1662,12 @@ namespace SE.UI
             Stopwatch sw = Stopwatch.StartNew();
             try
             {
-                if (File.Exists(outCmd)) { File.SetAttributes(outCmd, FileAttributes.Normal); File.Delete(outCmd); }
                 if (File.Exists(part)) File.Delete(part);
                 File.WriteAllText(part, head, Encoding.ASCII);
 
                 Core.Encode(items, part, outCmd, gzip, secret, usesPw, usesKf, Core.DefaultIterations, delMode > 0);
+                // an older file of the same name is replaced only now, when the new one is complete
+                if (File.Exists(outCmd)) { File.SetAttributes(outCmd, FileAttributes.Normal); File.Delete(outCmd); }
                 File.Move(part, outCmd);
                 File.SetAttributes(outCmd, FileAttributes.ReadOnly);
                 sw.Stop();
@@ -1694,6 +1695,11 @@ namespace SE.UI
                         try
                         {
                             Core.DeleteItems(items, delMode == 2);
+                            if (Core.DeleteKept.Count > 0)
+                            {
+                                sb.AppendLine(Ui.MarkWarn + Ui.TF("del_kept", Core.DeleteKept.Count, null));
+                                for (int i = 0; i < Core.DeleteKept.Count; i++) sb.AppendLine(Ui.MarkWarn + "  " + Core.DeleteKept[i]);
+                            }
                             if (Core.DeleteFailed.Count == 0) sb.AppendLine(Ui.T("del_ok"));
                             else
                             {

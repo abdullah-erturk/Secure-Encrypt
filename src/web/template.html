@@ -561,6 +561,29 @@ var SEcore = (function () {
     return out;
   };
 
+  // The loops below can run for a long time without a real pause (data that is already there is handed over at once), and
+  // then the page cannot draw or react to a click: no progress bar, no Cancel. So they hand the thread back to the browser
+  // about twenty times a second.
+  var lastBreath = 0;
+  // (a message to itself: an ordinary task without the 4 ms minimum of setTimeout, so drawing, clicks and timers all get a turn)
+  var breathPort = null, breathWaiting = [];
+  function yieldTask() {
+    return new Promise(function (res) {
+      if (typeof window === 'undefined' || typeof MessageChannel !== 'function') { setTimeout(res, 0); return; }
+      if (!breathPort) {
+        var mc = new MessageChannel();
+        mc.port1.onmessage = function () { var w = breathWaiting.shift(); if (w) w(); };
+        breathPort = mc.port2;
+      }
+      breathWaiting.push(res);
+      breathPort.postMessage(0);
+    });
+  }
+  function breathe() {
+    if (Date.now() - lastBreath < 50) return undefined;
+    return yieldTask().then(function () { lastBreath = Date.now(); });
+  }
+
   var CHUNK = 4194304;                             // bytes per AES call (a multiple of 16)
 
   function genStream(gen) {
@@ -618,7 +641,7 @@ var SEcore = (function () {
 
     // pass 1: SHA-256 of the container (it goes in front of the data)
     var sha = new Sha256(), done = 0;
-    for await (var c of containerGen(items, total, function (n) { done += n; prog(1, total ? done / total : 1); })) { chk(); sha.update(c); }
+    for await (var c of containerGen(items, total, function (n) { done += n; prog(1, total ? done / total : 1); })) { chk(); sha.update(c); await breathe(); }
     var shaB = sha.digest();
 
     if (!secret) {                                    // mode 1: hidden with the fixed XOR key (no password, no authentication)
@@ -631,7 +654,7 @@ var SEcore = (function () {
       var src1 = genStream(containerGen(items, total, function (n) { done += n; prog(2, total ? done / total : 1); }));
       var rd1 = (useGz ? src1.pipeThrough(new CompressionStream('gzip')) : src1).getReader();
       for (;;) {
-        chk();
+        chk(); await breathe();
         var r1 = await rd1.read();
         if (r1.done) break;
         var u1 = r1.value, x1 = new Uint8Array(u1.length);
@@ -666,7 +689,7 @@ var SEcore = (function () {
     var q = new Queue();
     q.push(shaB);
     for (;;) {
-      chk();
+      chk(); await breathe();
       var r = await rd.read();
       if (r.done) break;
       q.push(r.value);
@@ -732,7 +755,7 @@ var SEcore = (function () {
       mac.update(hd);
       rd = blob.slice(pStart, pEnd).stream().getReader();
       for (;;) {
-        chk(); r = await rd.read();
+        chk(); await breathe(); r = await rd.read();
         if (r.done) break;
         mac.update(r.value); done += r.value.length; prog(1, done / plen);
       }
@@ -753,7 +776,7 @@ var SEcore = (function () {
         return pt;
       }
       for (;;) {
-        chk();
+        chk(); await breathe();
         var x = await rd2.read();
         if (x.done) break;
         dc += x.value.length; prog(2, dc / plen);
@@ -773,7 +796,7 @@ var SEcore = (function () {
     async function* unhide() {                        // mode 1: the fixed XOR key, its position carries on from piece to piece
       var rd3 = blob.slice(pStart, pEnd).stream().getReader(), j = 0, dc = 0;
       for (;;) {
-        chk();
+        chk(); await breathe();
         var x = await rd3.read();
         if (x.done) break;
         var u = x.value, y = new Uint8Array(u.length);
@@ -1354,6 +1377,9 @@ if (typeof globalThis !== 'undefined') globalThis.SEcore = SEcore;
       decMeta = SEcore.inspect(u8); decBuf = u8; decInfo(); $('btnDecrypt').disabled = false;
     }).catch(function (e) { show('msgDec', 'bad', function () { return errText(e); }); });
   }
+  // desktop: the file dialog lists only .cmd files (a browser can filter by extension, not by "_decrypt.cmd"; "All files"
+  // stays available in the dialog). Not on phones and tablets: their pickers do not know .cmd and may offer nothing at all.
+  if (!/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && !(navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))) $('inDec').setAttribute('accept', '.cmd');
   $('btnPickDec').onclick = function () { $('inDec').value = ''; $('inDec').click(); };
   $('inDec').onchange = function () { if (this.files[0]) loadDec(this.files[0]); };
 

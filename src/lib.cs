@@ -578,6 +578,7 @@ namespace SE
             List<string> skipped = new List<string>();
             List<Entry> entries = Collect(items, skipped, outPath, alsoExclude);
             Skipped = skipped;
+            LastEntries = entries;
             if (entries.Count == 0) throw new InvalidOperationException("EMPTY");
             long total = 0;
             for (int i = 0; i < entries.Count; i++) total += entries[i].Length;
@@ -704,31 +705,74 @@ namespace SE
             catch (Exception ex) { DeleteFailed.Add(f + " : " + ex.Message); }
         }
 
-        private static void DeleteDir(string d, bool overwrite)
+        // files left in place because they are not in the encrypted copy: created, or changed, after they were read
+        public static List<string> DeleteKept = new List<string>();
+
+        // what the last Encode call put into the file: only these are deleted
+        private static List<Entry> LastEntries = null;
+
+        // Removes the folders that are empty now; whatever is still in them was not in the encrypted copy.
+        private static void RemoveEmptyDirs(string d, Dictionary<string, bool> reported)
         {
             string[] files = new string[0];
             string[] dirs = new string[0];
-            try { files = Directory.GetFiles(d); dirs = Directory.GetDirectories(d); }
-            catch (Exception ex) { DeleteFailed.Add(d + " : " + ex.Message); return; }
-            for (int i = 0; i < files.Length; i++) TryDeleteFile(files[i], overwrite);
-            for (int i = 0; i < dirs.Length; i++) DeleteDir(dirs[i], overwrite);
             try
             {
+                if ((File.GetAttributes(d) & FileAttributes.ReparsePoint) != 0) return;
+                files = Directory.GetFiles(d);
+                dirs = Directory.GetDirectories(d);
+            }
+            catch (Exception ex) { DeleteFailed.Add(d + " : " + ex.Message); return; }
+            for (int i = 0; i < dirs.Length; i++)
+            {
+                string name = Path.GetFileName(dirs[i]);
+                if (string.Equals(name, "System Volume Information", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(name, "$RECYCLE.BIN", StringComparison.OrdinalIgnoreCase)) continue;
+                RemoveEmptyDirs(dirs[i], reported);
+            }
+            for (int i = 0; i < files.Length; i++)
+                if (!reported.ContainsKey(files[i].ToUpperInvariant())) { reported[files[i].ToUpperInvariant()] = true; DeleteKept.Add(files[i]); }
+            try
+            {
+                if (Directory.GetFileSystemEntries(d).Length > 0) return;
                 File.SetAttributes(d, FileAttributes.Normal);
                 Directory.Delete(d);
             }
             catch (Exception ex) { DeleteFailed.Add(d + " : " + ex.Message); }
         }
 
-        // Keeps going after a failure so that one locked file does not leave the rest behind.
+        // Deletes only what the last Encode call wrote into the encrypted file: a file that was added to a folder later,
+        // or changed after it was read, stays (DeleteKept). Keeps going after a failure so that one locked file does not
+        // leave the rest behind (DeleteFailed).
         public static void DeleteItems(string[] items, bool overwrite)
         {
             DeleteFailed = new List<string>();
-            for (int i = 0; i < items.Length; i++)
+            DeleteKept = new List<string>();
+            Dictionary<string, bool> reported = new Dictionary<string, bool>();
+            List<Entry> entries = LastEntries;
+            if (entries == null) entries = new List<Entry>();
+            for (int i = 0; i < entries.Count; i++)
             {
-                if (Directory.Exists(items[i])) DeleteDir(items[i], overwrite);
-                else TryDeleteFile(items[i], overwrite);
+                Entry e = entries[i];
+                if (e.IsDir) continue;
+                try
+                {
+                    FileInfo fi = new FileInfo(e.Full);
+                    if (!fi.Exists) continue;
+                    if (fi.Length != e.Length || fi.LastWriteTimeUtc.ToFileTimeUtc() != e.MTime)
+                    {
+                        reported[e.Full.ToUpperInvariant()] = true;
+                        DeleteKept.Add(e.Full);
+                        continue;
+                    }
+                }
+                catch (Exception ex) { reported[e.Full.ToUpperInvariant()] = true; DeleteFailed.Add(e.Full + " : " + ex.Message); continue; }
+                int before = DeleteFailed.Count;
+                TryDeleteFile(e.Full, overwrite);
+                if (DeleteFailed.Count > before) reported[e.Full.ToUpperInvariant()] = true;
             }
+            for (int i = 0; i < items.Length; i++)
+                if (Directory.Exists(items[i])) RemoveEmptyDirs(items[i], reported);
         }
         // ------------------------------------------------------------ extraction helpers
 

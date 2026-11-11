@@ -16,7 +16,7 @@
 
 ## Download Link / İndirme Bağlantısı:
 
-[![Release](https://img.shields.io/badge/Release-v8.0-4c1.svg?style=flat)](https://github.com/abdullah-erturk/Secure-Encrypt/archive/refs/heads/main.zip)
+[![Release](https://img.shields.io/badge/Release-v8.1-4c1.svg?style=flat)](https://github.com/abdullah-erturk/Secure-Encrypt/archive/refs/heads/main.zip)
 
 Dosya ve klasörleri isteğe bağlı **AES-256 parola / anahtar dosyası koruması** ile kendi kendini açabilen tek bir `.cmd` arşivine dönüştüren bir Windows betiği (Windows 7 – 11). Ayrıca tarayıcı sürümü sayesinde **çapraz platformdur**: Linux, macOS, Android ve iOS'ta da aynı dosyaları şifreleyip çözebilirsiniz; Chrome/Edge/Opera/Samsung Internet'te büyük dosya modu ile 1,5 GB sınırı da yoktur.
 

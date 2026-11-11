@@ -46,8 +46,19 @@ if /i not "!_CALC_HASH!"=="%_V_SIG%" (
 attrib +R "%~f0" >nul 2>&1
 mode con cols=100 lines=40 >nul 2>&1
 endlocal
+setlocal EnableDelayedExpansion
+set "SE_CL=!cmdcmdline!"
+set "SE_CQ=!SE_CL:"=?!"
 setlocal DisableDelayedExpansion
 set "SE_SELF=%~f0"
+:: Started by Explorer (double click, drag and drop): the command line is  cmd.exe /c ""<this file>" <arguments>".
+:: Explorer does not quote a path without spaces, so a name like a&b.txt is cut at the "&" and cmd.exe would run the
+:: rest as a command when this file ends. In that case (SE_DROP) the program takes its arguments from SE_CL and this
+:: file ends with "exit", which also ends that cmd.exe.
+set "SE_DROP="
+:: (SE_CQ is SE_CL with every quote replaced by "?", which no file name can contain: no quotes in the search text)
+set SE_CQ| findstr /i /l /c:"/c ??%~f0? " >nul 2>&1 && set "SE_DROP=1"
+set "SE_CQ="
 set "SE_PS=%TEMP%\SecureEncrypt_%RANDOM%%RANDOM%.ps1"
 more +__PSLINE__ "%~f0" > "%SE_PS%" 2>nul
 if not exist "%SE_PS%" (
@@ -65,6 +76,7 @@ for %%A in (%*) do (
     if /i "%%~A"=="/q" set "SE_DETACH="
     if /i "%%~A"=="/elevated" set "SE_DETACH="
 )
+if defined SE_DROP goto drop
 if defined SE_DETACH (
     set "SE_DETACHED=1"
     start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%SE_PS%" %*
@@ -74,3 +86,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%SE_PS%" %*
 set "SE_RC=%ERRORLEVEL%"
 del /f /q "%SE_PS%" >nul 2>&1
 exit /b %SE_RC%
+
+:drop
+if defined SE_DETACH (
+    set "SE_DETACHED=1"
+    start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%SE_PS%"
+    exit 0
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SE_PS%"
+set "SE_RC=%ERRORLEVEL%"
+del /f /q "%SE_PS%" >nul 2>&1
+exit %SE_RC%
