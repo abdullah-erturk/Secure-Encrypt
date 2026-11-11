@@ -6,6 +6,18 @@
 
 ## Türkçe
 
+### v8.1 (v8.0'a göre değişenler)
+
+Hata düzeltme sürümüdür; yeni özellik yoktur, dosya biçimi (`SEv2`) değişmedi.
+
+* **Eski şifreli dosya artık erken silinmez:** Aynı adda bir `_decrypt.cmd` varken yeniden şifreleme yapılırsa eski dosya işlem başında siliniyordu; şifreleme yarıda kesilir ya da hata verirse elde hiçbir kopya kalmıyordu. Artık eski dosya, yenisi eksiksiz yazıldıktan sonra değiştirilir.
+* **"Orijinalleri sil" yalnızca arşivlenenleri siler:** Silme artık şifreli kopyaya gerçekten giren dosyalarla sınırlıdır. Okunduktan sonra klasöre eklenen ya da değişen (boyutu veya değişiklik tarihi farklı) dosyalar silinmez ve sarı bir uyarıyla listelenir; klasörler yalnızca boşaldıysa kaldırılır. Önceden klasör tümüyle siliniyordu, bu yüzden şifreli kopyada bulunmayan dosyalar da kaybolabiliyordu.
+* **Adında `&` olan dosyaları sürükleyip bırakma:** Explorer, bırakılan yolda boşluk yoksa tırnak koymaz; adında `&` bulunan bir dosya ya da klasör `SecureEncrypt.cmd` üzerine bırakıldığında ad bölünüyor, `&` işaretinden sonraki bölüm komut olarak çalıştırılabiliyordu. Bırakılan yollar artık komut satırının kendisinden okunur ve betik, kalan bölüm çalışmadan kapanır. Üretilen `_decrypt.cmd` dosyalarının başlatıcısı bu sürümde değişmedi.
+* **Windows 11 yeni sağ tık menüsünde "Şifreyi çöz":** Menü yardımcı programı `_decrypt.cmd` dosyasını artık sistemdeki `cmd.exe` ile başlatır. Geçerli olması için kurulumun yeniden yapılması gerekir (Kaldır, sonra Kur).
+* **Tarayıcı sürümü, büyük dosyada donma:** Büyük bir dosyayla (4,39 GB ile görüldü) işlem başladıktan sonraki ilk saniyelerde sayfa yanıt vermiyor, ilerleme çubuğu güncellenmiyor ve düğmelere tıklanamıyordu. İşlem artık düzenli aralıklarla tarayıcıya sıra verir; ilerleme baştan itibaren görünür ve iptal düğmesi çalışır.
+* **Tarayıcı sürümü, çözme için dosya seçimi:** Masaüstü tarayıcılarda dosya penceresi yalnızca `.cmd` dosyalarını listeler ("Tüm dosyalar" yine seçilebilir). Telefon ve tabletlerde süzgeç uygulanmaz.
+* **Dil dosyaları:** Silinmeyen dosyalar uyarısı için `del_kept` anahtarı dokuz dile eklendi.
+
 ### v8.0 (v7.0'a göre değişenler)
 
 * **Tarayıcı sürümünde büyük dosya modu:** Dosya Sistemi Erişimi API'sini destekleyen tarayıcılarda (Chrome, Edge, Opera, Samsung Internet) 1,5 GB sınırı kalktı. Veri parça parça (4 MiB) işlenir ve doğrudan diske yazılır; bellek sınır olmaz. Şifrelerken kaydedilecek dosya, çözerken hedef klasör sorulur. İlerleme çubuğu ve **iptal düğmesi** vardır; parolalı işlem iki adımdır (okuma/denetim, sonra şifreleme/çözme). Üretilen dosya normal `SEv2` dosyasıdır. 2,6 GB ve 5,65 GB ile (masaüstü) ve 2,33 GB ile (Android, Chrome ve Samsung Internet; klasör dahil) denenmiştir. Firefox ve Safari'de bu özellik yoktur, 1,5 GB sınırı sürer.
@@ -70,6 +82,18 @@ v6, v5'in baştan yazılmış hâlidir. Eski betikler `old_versions\` klasörün
 ---
 
 ## English
+
+### v8.1 (changes compared to v8.0)
+
+A bug-fix release; no new features, and the file format (`SEv2`) did not change.
+
+* **The old encrypted file is no longer deleted early:** when a `_decrypt.cmd` of the same name already existed, encrypting again deleted the old file at the start; if the run was interrupted or failed, no copy was left. The old file is now replaced only after the new one has been written completely.
+* **"Delete originals" removes only what was archived:** deleting is now limited to the files that really went into the encrypted copy. Files added to a folder or changed after they were read (different size or modification time) are kept and listed with an amber warning; folders are removed only when they end up empty. Previously the whole folder was deleted, so files missing from the encrypted copy could be lost too.
+* **Dragging and dropping files with `&` in the name:** Explorer does not quote a dropped path that has no spaces; when a file or folder with `&` in its name was dropped onto `SecureEncrypt.cmd`, the name was split and the part after the `&` could be run as a command. Dropped paths are now read from the command line itself and the script closes before the remaining part can run. The launcher of the generated `_decrypt.cmd` files did not change in this release.
+* **"Decrypt" in the new Windows 11 context menu:** the menu helper now starts the `_decrypt.cmd` file with the system's `cmd.exe`. The installation has to be repeated for this to take effect (Uninstall, then Install).
+* **Browser version, freeze with large files:** with a large file (seen with 4.39 GB) the page did not respond during the first seconds after the start; the progress bar did not update and the buttons could not be clicked. The work now hands control back to the browser at regular intervals; progress is visible from the start and the Cancel button works.
+* **Browser version, choosing the file to decrypt:** on desktop browsers the file dialog lists `.cmd` files only ("All files" can still be chosen). No filter is applied on phones and tablets.
+* **Language files:** the `del_kept` key for the kept-files warning was added to all nine languages.
 
 ### v8.0 (changes compared to v7.0)
 

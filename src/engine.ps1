@@ -4,7 +4,7 @@ $SelfPath = $env:SE_SELF
 # itself (PowerShell has read the whole file by now).
 if ($env:SE_DETACHED -eq '1') { try { Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue } catch { } }
 $script:RunItems = @()
-$Version = '8.0'
+$Version = '8.1'
 # ---------------------------------------------------------------- texts
 # The texts live in src\lang\*.ini; build.ps1 embeds them as $LangData (language code -> key -> text).
 # Keys that a language lacks fall back to English. The same block is in engine.ps1 and dec.ps1.
@@ -311,7 +311,7 @@ function Add-ModernMenu {
         $mf = Join-Path $work 'app.manifest'
         $mfText = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' + "`r`n" +
             '<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">' + "`r`n" +
-            '  <assemblyIdentity version="8.0.0.0" processorArchitecture="*" name="SecureEncrypt.ShellServer" type="win32" />' + "`r`n" +
+            '  <assemblyIdentity version="8.1.0.0" processorArchitecture="*" name="SecureEncrypt.ShellServer" type="win32" />' + "`r`n" +
             '  <description>SecureEncrypt Windows 11 context menu handler</description>' + "`r`n" +
             '  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3"><security><requestedPrivileges><requestedExecutionLevel level="asInvoker" uiAccess="false" /></requestedPrivileges></security></trustInfo>' + "`r`n" +
             '  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1"><application>' + "`r`n" +
@@ -707,8 +707,6 @@ function Invoke-Encrypt([string[]]$paths, [bool]$late) {
     Write-Host
     if (Test-Path -LiteralPath $outCmd) {
         if (-not (Ask-YN (TF 'exists_q' $outCmd) $false)) { Write-Host (T 'cancelled'); Wait-Key; exit 1 }
-        [IO.File]::SetAttributes($outCmd, [IO.FileAttributes]::Normal)
-        Remove-Item -LiteralPath $outCmd -Force
     }
     if (Test-Path -LiteralPath $part) { Remove-Item -LiteralPath $part -Force }
 
@@ -742,6 +740,11 @@ function Invoke-Encrypt([string[]]$paths, [bool]$late) {
     }
     $sw.Stop()
 
+    # an older file of the same name is replaced only now, when the new one is complete
+    if (Test-Path -LiteralPath $outCmd) {
+        [IO.File]::SetAttributes($outCmd, [IO.FileAttributes]::Normal)
+        Remove-Item -LiteralPath $outCmd -Force
+    }
     Move-Item -LiteralPath $part -Destination $outCmd -Force
     [IO.File]::SetAttributes($outCmd, [IO.FileAttributes]::ReadOnly)
 
@@ -779,6 +782,11 @@ function Invoke-Encrypt([string[]]$paths, [bool]$late) {
         } else {
             try {
                 [SE.Core]::DeleteItems([string[]]$items.ToArray([string]), ($delMode -eq 2))
+                if ([SE.Core]::DeleteKept.Count -gt 0) {
+                    $keptCount = [string][SE.Core]::DeleteKept.Count
+                    Write-Host (TF 'del_kept' $keptCount) -ForegroundColor Yellow
+                    foreach ($kp in [SE.Core]::DeleteKept) { Write-Host ('  ' + $kp) -ForegroundColor Yellow }
+                }
                 if ([SE.Core]::DeleteFailed.Count -eq 0) {
                     Write-Host (T 'del_ok') -ForegroundColor Green
                 } else {
@@ -858,8 +866,37 @@ function Run-Main($argList) {
     }
 }
 
+# Started by Explorer (see launcher.bat, SE_DROP): the arguments are read from the command line as Explorer wrote it,
+# because cmd.exe cuts an unquoted name at "&" (and at , ; =). Quotes group, blanks separate.
+function Get-DropArgs {
+    $list = New-Object System.Collections.ArrayList
+    $cl = [string]$env:SE_CL
+    $key = '/c ""' + $SelfPath + '" '
+    $i = $cl.IndexOf($key, [StringComparison]::OrdinalIgnoreCase)
+    if ($i -lt 0) { return $null }
+    $rest = $cl.Substring($i + $key.Length)
+    if ($rest.EndsWith('"')) { $rest = $rest.Substring(0, $rest.Length - 1) }
+    $sb = New-Object System.Text.StringBuilder
+    $inQuote = $false; $has = $false
+    foreach ($ch in $rest.ToCharArray()) {
+        if ($ch -eq [char]34) { $inQuote = -not $inQuote; $has = $true }
+        elseif (($ch -eq [char]32 -or $ch -eq [char]9) -and -not $inQuote) {
+            if ($has) { [void]$list.Add($sb.ToString()); $sb.Length = 0; $has = $false }
+        }
+        else { [void]$sb.Append($ch); $has = $true }
+    }
+    if ($has) { [void]$list.Add($sb.ToString()) }
+    return ,$list
+}
+
 try {
-    Run-Main $args
+    $startArgs = $args
+    if ($env:SE_DROP -eq '1') {
+        $dropArgs = Get-DropArgs
+        if ($dropArgs -ne $null) { $startArgs = @($dropArgs.ToArray()) }
+    }
+    $env:SE_DROP = $null; $env:SE_CL = $null
+    Run-Main $startArgs
 } catch {
     if ($env:SE_DETACHED -eq '1') { Restart-Visible $script:RunItems; exit 1 }
     try { [SE.UI.Ui]::ShowOwnConsole() } catch { }

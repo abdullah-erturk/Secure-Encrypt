@@ -1,6 +1,6 @@
 @echo off
 title SecureEncrypt (AES-256 Encrypt ^& Decrypt^) by Abdullah ERTURK
-set "_V_SIG=ce3a86640a138cd4ec039844b5fd5f47fbcb3d5793d73acbc26a90df110eeb08"
+set "_V_SIG=2baebcf3ad0cfb29db1f9aebf4efe8963b7f03e51992deeabeb0fc80c5c3ed46"
 setlocal enabledelayedexpansion
 
 set "TEMP_SELF=%TEMP%\SecureEncrypt_verify_%RANDOM%.tmp"
@@ -46,10 +46,21 @@ if /i not "!_CALC_HASH!"=="%_V_SIG%" (
 attrib +R "%~f0" >nul 2>&1
 mode con cols=100 lines=40 >nul 2>&1
 endlocal
+setlocal EnableDelayedExpansion
+set "SE_CL=!cmdcmdline!"
+set "SE_CQ=!SE_CL:"=?!"
 setlocal DisableDelayedExpansion
 set "SE_SELF=%~f0"
+:: Started by Explorer (double click, drag and drop): the command line is  cmd.exe /c ""<this file>" <arguments>".
+:: Explorer does not quote a path without spaces, so a name like a&b.txt is cut at the "&" and cmd.exe would run the
+:: rest as a command when this file ends. In that case (SE_DROP) the program takes its arguments from SE_CL and this
+:: file ends with "exit", which also ends that cmd.exe.
+set "SE_DROP="
+:: (SE_CQ is SE_CL with every quote replaced by "?", which no file name can contain: no quotes in the search text)
+set SE_CQ| findstr /i /l /c:"/c ??%~f0? " >nul 2>&1 && set "SE_DROP=1"
+set "SE_CQ="
 set "SE_PS=%TEMP%\SecureEncrypt_%RANDOM%%RANDOM%.ps1"
-more +77 "%~f0" > "%SE_PS%" 2>nul
+more +100 "%~f0" > "%SE_PS%" 2>nul
 if not exist "%SE_PS%" (
     echo ERROR: Could not extract the program. Windows PowerShell is required.
     pause
@@ -65,6 +76,7 @@ for %%A in (%*) do (
     if /i "%%~A"=="/q" set "SE_DETACH="
     if /i "%%~A"=="/elevated" set "SE_DETACH="
 )
+if defined SE_DROP goto drop
 if defined SE_DETACH (
     set "SE_DETACHED=1"
     start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%SE_PS%" %*
@@ -74,6 +86,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%SE_PS%" %*
 set "SE_RC=%ERRORLEVEL%"
 del /f /q "%SE_PS%" >nul 2>&1
 exit /b %SE_RC%
+
+:drop
+if defined SE_DETACH (
+    set "SE_DETACHED=1"
+    start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%SE_PS%"
+    exit 0
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SE_PS%"
+set "SE_RC=%ERRORLEVEL%"
+del /f /q "%SE_PS%" >nul 2>&1
+exit %SE_RC%
 #@@PS
 $ErrorActionPreference = 'Stop'
 $SelfPath = $env:SE_SELF
@@ -81,7 +104,7 @@ $SelfPath = $env:SE_SELF
 # itself (PowerShell has read the whole file by now).
 if ($env:SE_DETACHED -eq '1') { try { Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue } catch { } }
 $script:RunItems = @()
-$Version = '8.0'
+$Version = '8.1'
 # ---------------------------------------------------------------- texts
 # The texts live in src\lang\*.ini; build.ps1 embeds them as $LangData (language code -> key -> text).
 # Keys that a language lacks fall back to English. The same block is in engine.ps1 and dec.ps1.
@@ -388,7 +411,7 @@ function Add-ModernMenu {
         $mf = Join-Path $work 'app.manifest'
         $mfText = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' + "`r`n" +
             '<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">' + "`r`n" +
-            '  <assemblyIdentity version="8.0.0.0" processorArchitecture="*" name="SecureEncrypt.ShellServer" type="win32" />' + "`r`n" +
+            '  <assemblyIdentity version="8.1.0.0" processorArchitecture="*" name="SecureEncrypt.ShellServer" type="win32" />' + "`r`n" +
             '  <description>SecureEncrypt Windows 11 context menu handler</description>' + "`r`n" +
             '  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3"><security><requestedPrivileges><requestedExecutionLevel level="asInvoker" uiAccess="false" /></requestedPrivileges></security></trustInfo>' + "`r`n" +
             '  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1"><application>' + "`r`n" +
@@ -784,8 +807,6 @@ function Invoke-Encrypt([string[]]$paths, [bool]$late) {
     Write-Host
     if (Test-Path -LiteralPath $outCmd) {
         if (-not (Ask-YN (TF 'exists_q' $outCmd) $false)) { Write-Host (T 'cancelled'); Wait-Key; exit 1 }
-        [IO.File]::SetAttributes($outCmd, [IO.FileAttributes]::Normal)
-        Remove-Item -LiteralPath $outCmd -Force
     }
     if (Test-Path -LiteralPath $part) { Remove-Item -LiteralPath $part -Force }
 
@@ -819,6 +840,11 @@ function Invoke-Encrypt([string[]]$paths, [bool]$late) {
     }
     $sw.Stop()
 
+    # an older file of the same name is replaced only now, when the new one is complete
+    if (Test-Path -LiteralPath $outCmd) {
+        [IO.File]::SetAttributes($outCmd, [IO.FileAttributes]::Normal)
+        Remove-Item -LiteralPath $outCmd -Force
+    }
     Move-Item -LiteralPath $part -Destination $outCmd -Force
     [IO.File]::SetAttributes($outCmd, [IO.FileAttributes]::ReadOnly)
 
@@ -856,6 +882,11 @@ function Invoke-Encrypt([string[]]$paths, [bool]$late) {
         } else {
             try {
                 [SE.Core]::DeleteItems([string[]]$items.ToArray([string]), ($delMode -eq 2))
+                if ([SE.Core]::DeleteKept.Count -gt 0) {
+                    $keptCount = [string][SE.Core]::DeleteKept.Count
+                    Write-Host (TF 'del_kept' $keptCount) -ForegroundColor Yellow
+                    foreach ($kp in [SE.Core]::DeleteKept) { Write-Host ('  ' + $kp) -ForegroundColor Yellow }
+                }
                 if ([SE.Core]::DeleteFailed.Count -eq 0) {
                     Write-Host (T 'del_ok') -ForegroundColor Green
                 } else {
@@ -888,6 +919,7 @@ $LangData = @{
         'comp_on' = 'GZip-komprimiert'
         'compile' = 'Der Hilfscode konnte nicht kompiliert werden (.NET Framework erforderlich). Details:'
         'del_fail' = 'Konnte nicht alle Originale l\u00f6schen: {0}'
+        'del_kept' = 'Diese Dateien wurden NICHT gel\u00f6scht, weil sie nicht in der verschl\u00fcsselten Kopie enthalten sind (nach dem Einlesen hinzugef\u00fcgt oder ge\u00e4ndert) ({0}):'
         'del_ok' = 'Originalelement(e) gel\u00f6scht.'
         'del_partial' = 'Einige Originale konnten NICHT gel\u00f6scht werden ({0}); Der Rest wurde gel\u00f6scht:'
         'del_partial_hint' = 'Die verschl\u00fcsselte Kopie ist vollst\u00e4ndig. Schlie\u00dfen Sie alle Programme, die auf diese Dateien zugreifen, und l\u00f6schen Sie die Dateien anschlie\u00dfend manuell.'
@@ -1038,6 +1070,7 @@ $LangData = @{
         'comp_on' = 'GZip compressed'
         'compile' = 'The helper code could not be compiled (.NET Framework is required). Details:'
         'del_fail' = 'Could not delete all originals: {0}'
+        'del_kept' = 'These files were NOT deleted, because they are not in the encrypted copy (added or changed after they were read) ({0}):'
         'del_ok' = 'Original item(s) deleted.'
         'del_partial' = 'Some originals could NOT be deleted ({0}); the rest were deleted:'
         'del_partial_hint' = 'The encrypted copy is complete. Close whatever is using these files and delete them manually.'
@@ -1188,6 +1221,7 @@ $LangData = @{
         'comp_on' = 'Comprimido con GZip'
         'compile' = 'No se pudo compilar el c\u00f3digo auxiliar (se requiere .NET Framework). Detalles:'
         'del_fail' = 'No se pudieron eliminar todos los archivos originales: {0}'
+        'del_kept' = 'Estos archivos NO se han eliminado porque no est\u00e1n en la copia cifrada (se a\u00f1adieron o cambiaron despu\u00e9s de leerse) ({0}):'
         'del_ok' = 'Elemento(s) original(es) eliminado(s).'
         'del_partial' = 'Algunos archivos originales NO se pudieron eliminar ({0}); el resto s\u00ed se elimin\u00f3:'
         'del_partial_hint' = 'La copia cifrada est\u00e1 completa. Cierre cualquier programa que est\u00e9 accediendo a estos archivos y, a continuaci\u00f3n, elim\u00ednelos manualmente.'
@@ -1338,6 +1372,7 @@ $LangData = @{
         'comp_on' = 'compress\u00e9 avec GZip'
         'compile' = 'Impossible de compiler le code auxiliaire (n\u00e9cessite .NET Framework). D\u00e9tails :'
         'del_fail' = 'Impossible de supprimer tous les fichiers originaux : {0}'
+        'del_kept' = 'Ces fichiers n''ont PAS \u00e9t\u00e9 supprim\u00e9s, car ils ne sont pas dans la copie chiffr\u00e9e (ajout\u00e9s ou modifi\u00e9s apr\u00e8s leur lecture) ({0}) :'
         'del_ok' = '\u00c9l\u00e9ment(s) original(aux) supprim\u00e9(s).'
         'del_partial' = 'Certains fichiers originaux n''ont PAS pu \u00eatre supprim\u00e9s ({0}) ; les autres ont \u00e9t\u00e9 supprim\u00e9s :'
         'del_partial_hint' = 'La copie chiffr\u00e9e est compl\u00e8te. Fermez tous les programmes acc\u00e9dant \u00e0 ces fichiers, puis supprimez-les manuellement.'
@@ -1488,6 +1523,7 @@ $LangData = @{
         'comp_on' = 'Compresso con GZip'
         'compile' = 'Impossibile compilare il codice di supporto (\u00e8 richiesto .NET Framework). Dettagli:'
         'del_fail' = 'Impossibile eliminare tutti i file originali: {0}'
+        'del_kept' = 'Questi file NON sono stati eliminati perch\u00e9 non sono nella copia cifrata (aggiunti o modificati dopo la lettura) ({0}):'
         'del_ok' = 'Elemento/i originale/i eliminato/i.'
         'del_partial' = 'Alcuni file originali NON sono stati eliminati ({0}); i restanti sono stati eliminati:'
         'del_partial_hint' = 'La copia cifrata \u00e8 completa. Chiudere tutti i programmi che accedono a questi file, quindi eliminarli manualmente.'
@@ -1638,6 +1674,7 @@ $LangData = @{
         'comp_on' = 'GZip-gecomprimeerd'
         'compile' = 'Kan de hulpcode niet compileren (.NET Framework vereist). Details:'
         'del_fail' = 'Kon niet alle originelen verwijderen: {0}'
+        'del_kept' = 'Deze bestanden zijn NIET verwijderd, omdat ze niet in de versleutelde kopie staan (toegevoegd of gewijzigd nadat ze waren gelezen) ({0}):'
         'del_ok' = 'Origineel/originelen verwijderd.'
         'del_partial' = 'Sommige originelen konden NIET worden verwijderd ({0}); de rest is wel verwijderd:'
         'del_partial_hint' = 'De versleutelde kopie is volledig. Sluit programma''s die deze bestanden gebruiken en verwijder de bestanden vervolgens handmatig.'
@@ -1788,6 +1825,7 @@ $LangData = @{
         'comp_on' = '\u0441\u0436\u0430\u0442\u043e (GZip)'
         'compile' = '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043a\u043e\u043c\u043f\u0438\u043b\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0432\u0441\u043f\u043e\u043c\u043e\u0433\u0430\u0442\u0435\u043b\u044c\u043d\u044b\u0439 \u043a\u043e\u0434 (\u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044f .NET Framework). \u041f\u043e\u0434\u0440\u043e\u0431\u043d\u043e\u0441\u0442\u0438:'
         'del_fail' = '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0443\u0434\u0430\u043b\u0438\u0442\u044c \u0432\u0441\u0435 \u043e\u0440\u0438\u0433\u0438\u043d\u0430\u043b\u044b: {0}'
+        'del_kept' = '\u042d\u0442\u0438 \u0444\u0430\u0439\u043b\u044b \u041d\u0415 \u0431\u044b\u043b\u0438 \u0443\u0434\u0430\u043b\u0435\u043d\u044b, \u0442\u0430\u043a \u043a\u0430\u043a \u0438\u0445 \u043d\u0435\u0442 \u0432 \u0437\u0430\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u043d\u043e\u0439 \u043a\u043e\u043f\u0438\u0438 (\u0434\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u044b \u0438\u043b\u0438 \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u044b \u043f\u043e\u0441\u043b\u0435 \u0447\u0442\u0435\u043d\u0438\u044f) ({0}):'
         'del_ok' = '\u0418\u0441\u0445\u043e\u0434\u043d\u044b\u0439 \u044d\u043b\u0435\u043c\u0435\u043d\u0442(\u044b) \u0443\u0434\u0430\u043b\u0435\u043d(\u044b).'
         'del_partial' = '\u041d\u0435\u043a\u043e\u0442\u043e\u0440\u044b\u0435 \u043e\u0440\u0438\u0433\u0438\u043d\u0430\u043b\u044b \u041d\u0415 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0443\u0434\u0430\u043b\u0438\u0442\u044c ({0}); \u043e\u0441\u0442\u0430\u043b\u044c\u043d\u044b\u0435 \u0431\u044b\u043b\u0438 \u0443\u0434\u0430\u043b\u0435\u043d\u044b:'
         'del_partial_hint' = '\u0417\u0430\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u043d\u0430\u044f \u043a\u043e\u043f\u0438\u044f \u0441\u043e\u0437\u0434\u0430\u043d\u0430 \u0443\u0441\u043f\u0435\u0448\u043d\u043e. \u0417\u0430\u043a\u0440\u043e\u0439\u0442\u0435 \u0432\u0441\u0435 \u043f\u0440\u043e\u0433\u0440\u0430\u043c\u043c\u044b, \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u044e\u0449\u0438\u0435 \u044d\u0442\u0438 \u0444\u0430\u0439\u043b\u044b, \u0430 \u0437\u0430\u0442\u0435\u043c \u0443\u0434\u0430\u043b\u0438\u0442\u0435 \u0441\u0430\u043c\u0438 \u0444\u0430\u0439\u043b\u044b \u0432\u0440\u0443\u0447\u043d\u0443\u044e.'
@@ -1938,6 +1976,7 @@ $LangData = @{
         'comp_on' = 'GZip ile s\u0131k\u0131\u015ft\u0131r\u0131ld\u0131'
         'compile' = 'Yard\u0131mc\u0131 kod derlenemedi (.NET Framework gerekli). Ayr\u0131nt\u0131lar:'
         'del_fail' = 'Orijinallerin tamam\u0131 silinemedi: {0}'
+        'del_kept' = 'Bu dosyalar S\u0130L\u0130NMED\u0130, \u00e7\u00fcnk\u00fc \u015fifreli kopyada yoklar (okunduktan sonra eklenmi\u015f ya da de\u011fi\u015fmi\u015fler) ({0}):'
         'del_ok' = 'Orijinal \u00f6\u011fe(ler) silindi.'
         'del_partial' = 'Baz\u0131 orijinaller S\u0130L\u0130NEMED\u0130 ({0}); geri kalanlar silindi:'
         'del_partial_hint' = '\u015eifreli kopya eksiksiz olu\u015fturuldu. Bu dosyalar\u0131 kullanan program\u0131 kapat\u0131p elle silebilirsiniz.'
@@ -2088,6 +2127,7 @@ $LangData = @{
         'comp_on' = '\u0421\u0442\u0438\u0441\u043d\u0443\u0442\u043e \u0437\u0430 \u0434\u043e\u043f\u043e\u043c\u043e\u0433\u043e\u044e GZip'
         'compile' = '\u041d\u0435 \u0432\u0434\u0430\u043b\u043e\u0441\u044f \u0441\u043a\u043e\u043c\u043f\u0456\u043b\u044e\u0432\u0430\u0442\u0438 \u0434\u043e\u043f\u043e\u043c\u0456\u0436\u043d\u0438\u0439 \u043a\u043e\u0434 (\u043f\u043e\u0442\u0440\u0456\u0431\u0435\u043d .NET Framework). \u0414\u0435\u0442\u0430\u043b\u0456:'
         'del_fail' = '\u041d\u0435 \u0432\u0434\u0430\u043b\u043e\u0441\u044f \u0432\u0438\u0434\u0430\u043b\u0438\u0442\u0438 \u0432\u0441\u0456 \u043e\u0440\u0438\u0433\u0456\u043d\u0430\u043b\u0438: {0}'
+        'del_kept' = '\u0426\u0456 \u0444\u0430\u0439\u043b\u0438 \u041d\u0415 \u0431\u0443\u043b\u043e \u0432\u0438\u0434\u0430\u043b\u0435\u043d\u043e, \u0431\u043e \u0457\u0445 \u043d\u0435\u043c\u0430\u0454 \u0432 \u0437\u0430\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u0456\u0439 \u043a\u043e\u043f\u0456\u0457 (\u0434\u043e\u0434\u0430\u043d\u0456 \u0430\u0431\u043e \u0437\u043c\u0456\u043d\u0435\u043d\u0456 \u043f\u0456\u0441\u043b\u044f \u0447\u0438\u0442\u0430\u043d\u043d\u044f) ({0}):'
         'del_ok' = '\u041e\u0440\u0438\u0433\u0456\u043d\u0430\u043b\u0438 \u0432\u0438\u0434\u0430\u043b\u0435\u043d\u043e.'
         'del_partial' = '\u0414\u0435\u044f\u043a\u0456 \u043e\u0440\u0438\u0433\u0456\u043d\u0430\u043b\u0438 \u041d\u0415 \u0432\u0434\u0430\u043b\u043e\u0441\u044f \u0432\u0438\u0434\u0430\u043b\u0438\u0442\u0438 ({0}); \u0440\u0435\u0448\u0442\u0443 \u0431\u0443\u043b\u043e \u0432\u0438\u0434\u0430\u043b\u0435\u043d\u043e:'
         'del_partial_hint' = '\u0417\u0430\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u0443 \u043a\u043e\u043f\u0456\u044e \u0443\u0441\u043f\u0456\u0448\u043d\u043e \u0441\u0442\u0432\u043e\u0440\u0435\u043d\u043e. \u0411\u0443\u0434\u044c \u043b\u0430\u0441\u043a\u0430, \u0437\u0430\u043a\u0440\u0438\u0439\u0442\u0435 \u0432\u0441\u0456 \u043f\u0440\u043e\u0433\u0440\u0430\u043c\u0438, \u0449\u043e \u0432\u0438\u043a\u043e\u0440\u0438\u0441\u0442\u043e\u0432\u0443\u044e\u0442\u044c \u0446\u0456 \u0444\u0430\u0439\u043b\u0438, \u0430 \u043f\u043e\u0442\u0456\u043c \u0432\u0438\u0434\u0430\u043b\u0456\u0442\u044c \u0457\u0445 \u0432\u0440\u0443\u0447\u043d\u0443.'
@@ -3261,6 +3301,7 @@ bool usesPassword, bool usesKeyFile, int iterations, bool verify)
 List<string> skipped = new List<string>();
 List<Entry> entries = Collect(items, skipped, outPath, alsoExclude);
 Skipped = skipped;
+LastEntries = entries;
 if (entries.Count == 0) throw new InvalidOperationException("EMPTY");
 long total = 0;
 for (int i = 0; i < entries.Count; i++) total += entries[i].Length;
@@ -3380,17 +3421,31 @@ private static void TryDeleteFile(string f, bool overwrite)
 try { DeleteFile(f, overwrite); }
 catch (Exception ex) { DeleteFailed.Add(f + " : " + ex.Message); }
 }
-
-private static void DeleteDir(string d, bool overwrite)
+public static List<string> DeleteKept = new List<string>();
+private static List<Entry> LastEntries = null;
+private static void RemoveEmptyDirs(string d, Dictionary<string, bool> reported)
 {
 string[] files = new string[0];
 string[] dirs = new string[0];
-try { files = Directory.GetFiles(d); dirs = Directory.GetDirectories(d); }
-catch (Exception ex) { DeleteFailed.Add(d + " : " + ex.Message); return; }
-for (int i = 0; i < files.Length; i++) TryDeleteFile(files[i], overwrite);
-for (int i = 0; i < dirs.Length; i++) DeleteDir(dirs[i], overwrite);
 try
 {
+if ((File.GetAttributes(d) & FileAttributes.ReparsePoint) != 0) return;
+files = Directory.GetFiles(d);
+dirs = Directory.GetDirectories(d);
+}
+catch (Exception ex) { DeleteFailed.Add(d + " : " + ex.Message); return; }
+for (int i = 0; i < dirs.Length; i++)
+{
+string name = Path.GetFileName(dirs[i]);
+if (string.Equals(name, "System Volume Information", StringComparison.OrdinalIgnoreCase) ||
+string.Equals(name, "$RECYCLE.BIN", StringComparison.OrdinalIgnoreCase)) continue;
+RemoveEmptyDirs(dirs[i], reported);
+}
+for (int i = 0; i < files.Length; i++)
+if (!reported.ContainsKey(files[i].ToUpperInvariant())) { reported[files[i].ToUpperInvariant()] = true; DeleteKept.Add(files[i]); }
+try
+{
+if (Directory.GetFileSystemEntries(d).Length > 0) return;
 File.SetAttributes(d, FileAttributes.Normal);
 Directory.Delete(d);
 }
@@ -3399,11 +3454,32 @@ catch (Exception ex) { DeleteFailed.Add(d + " : " + ex.Message); }
 public static void DeleteItems(string[] items, bool overwrite)
 {
 DeleteFailed = new List<string>();
-for (int i = 0; i < items.Length; i++)
+DeleteKept = new List<string>();
+Dictionary<string, bool> reported = new Dictionary<string, bool>();
+List<Entry> entries = LastEntries;
+if (entries == null) entries = new List<Entry>();
+for (int i = 0; i < entries.Count; i++)
 {
-if (Directory.Exists(items[i])) DeleteDir(items[i], overwrite);
-else TryDeleteFile(items[i], overwrite);
+Entry e = entries[i];
+if (e.IsDir) continue;
+try
+{
+FileInfo fi = new FileInfo(e.Full);
+if (!fi.Exists) continue;
+if (fi.Length != e.Length || fi.LastWriteTimeUtc.ToFileTimeUtc() != e.MTime)
+{
+reported[e.Full.ToUpperInvariant()] = true;
+DeleteKept.Add(e.Full);
+continue;
 }
+}
+catch (Exception ex) { reported[e.Full.ToUpperInvariant()] = true; DeleteFailed.Add(e.Full + " : " + ex.Message); continue; }
+int before = DeleteFailed.Count;
+TryDeleteFile(e.Full, overwrite);
+if (DeleteFailed.Count > before) reported[e.Full.ToUpperInvariant()] = true;
+}
+for (int i = 0; i < items.Length; i++)
+if (Directory.Exists(items[i])) RemoveEmptyDirs(items[i], reported);
 }
 
 private static string SafePath(string root, string rel)
@@ -3912,7 +3988,7 @@ return l;
 internal static void ShowAbout(IWin32Window owner)
 {
 Form d = new Form();
-d.Text = "SecureEncrypt v8.0 - " + T("g_about");
+d.Text = "SecureEncrypt v8.1 - " + T("g_about");
 d.FormBorderStyle = FormBorderStyle.FixedDialog;
 d.StartPosition = FormStartPosition.CenterParent;
 d.MaximizeBox = false; d.MinimizeBox = false; d.ShowInTaskbar = false;
@@ -5260,11 +5336,11 @@ bool ok = false;
 Stopwatch sw = Stopwatch.StartNew();
 try
 {
-if (File.Exists(outCmd)) { File.SetAttributes(outCmd, FileAttributes.Normal); File.Delete(outCmd); }
 if (File.Exists(part)) File.Delete(part);
 File.WriteAllText(part, head, Encoding.ASCII);
 
 Core.Encode(items, part, outCmd, gzip, secret, usesPw, usesKf, Core.DefaultIterations, delMode > 0);
+if (File.Exists(outCmd)) { File.SetAttributes(outCmd, FileAttributes.Normal); File.Delete(outCmd); }
 File.Move(part, outCmd);
 File.SetAttributes(outCmd, FileAttributes.ReadOnly);
 sw.Stop();
@@ -5292,6 +5368,11 @@ else
 try
 {
 Core.DeleteItems(items, delMode == 2);
+if (Core.DeleteKept.Count > 0)
+{
+sb.AppendLine(Ui.MarkWarn + Ui.TF("del_kept", Core.DeleteKept.Count, null));
+for (int i = 0; i < Core.DeleteKept.Count; i++) sb.AppendLine(Ui.MarkWarn + "  " + Core.DeleteKept[i]);
+}
 if (Core.DeleteFailed.Count == 0) sb.AppendLine(Ui.T("del_ok"));
 else
 {
@@ -6202,9 +6283,9 @@ using System.Reflection;
 [assembly: AssemblyCompany("Abdullah ERT\u00dcRK")]
 [assembly: AssemblyProduct("SecureEncrypt")]
 [assembly: AssemblyCopyright("Open source - Abdullah ERT\u00dcRK - github.com/abdullah-erturk - erturk-dev.netlify.app")]
-[assembly: AssemblyVersion("8.0.0.0")]
-[assembly: AssemblyFileVersion("8.0.0.0")]
-[assembly: AssemblyInformationalVersion("8.0 -open source: github.com/abdullah-erturk - erturk-dev.netlify.app")]
+[assembly: AssemblyVersion("8.1.0.0")]
+[assembly: AssemblyFileVersion("8.1.0.0")]
+[assembly: AssemblyInformationalVersion("8.1-open source: github.com/abdullah-erturk - erturk-dev.netlify.app")]
 
 namespace SEShell
 {
@@ -6394,7 +6475,7 @@ try
 {
 List<string> p = Util.Paths(items);
 if (p.Count != 1) return 0;
-ProcessStartInfo psi = new ProcessStartInfo(p[0]);
+ProcessStartInfo psi = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "cmd.exe"), "/c \"\"" + p[0] + "\"\"");
 psi.UseShellExecute = true;
 psi.WorkingDirectory = Path.GetDirectoryName(p[0]);
 Process.Start(psi);
@@ -6816,8 +6897,37 @@ function Run-Main($argList) {
     }
 }
 
+# Started by Explorer (see launcher.bat, SE_DROP): the arguments are read from the command line as Explorer wrote it,
+# because cmd.exe cuts an unquoted name at "&" (and at , ; =). Quotes group, blanks separate.
+function Get-DropArgs {
+    $list = New-Object System.Collections.ArrayList
+    $cl = [string]$env:SE_CL
+    $key = '/c ""' + $SelfPath + '" '
+    $i = $cl.IndexOf($key, [StringComparison]::OrdinalIgnoreCase)
+    if ($i -lt 0) { return $null }
+    $rest = $cl.Substring($i + $key.Length)
+    if ($rest.EndsWith('"')) { $rest = $rest.Substring(0, $rest.Length - 1) }
+    $sb = New-Object System.Text.StringBuilder
+    $inQuote = $false; $has = $false
+    foreach ($ch in $rest.ToCharArray()) {
+        if ($ch -eq [char]34) { $inQuote = -not $inQuote; $has = $true }
+        elseif (($ch -eq [char]32 -or $ch -eq [char]9) -and -not $inQuote) {
+            if ($has) { [void]$list.Add($sb.ToString()); $sb.Length = 0; $has = $false }
+        }
+        else { [void]$sb.Append($ch); $has = $true }
+    }
+    if ($has) { [void]$list.Add($sb.ToString()) }
+    return ,$list
+}
+
 try {
-    Run-Main $args
+    $startArgs = $args
+    if ($env:SE_DROP -eq '1') {
+        $dropArgs = Get-DropArgs
+        if ($dropArgs -ne $null) { $startArgs = @($dropArgs.ToArray()) }
+    }
+    $env:SE_DROP = $null; $env:SE_CL = $null
+    Run-Main $startArgs
 } catch {
     if ($env:SE_DETACHED -eq '1') { Restart-Visible $script:RunItems; exit 1 }
     try { [SE.UI.Ui]::ShowOwnConsole() } catch { }
